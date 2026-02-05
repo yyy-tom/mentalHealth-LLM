@@ -1,0 +1,56 @@
+{
+  "_comment": "Qwen2.5-7B on 8x RTX 2080 Ti (11GB each) - Distributed QLoRA training",
+
+  "model_name": "Qwen/Qwen2.5-7B-Instruct",
+  "dataset_path": "datasets/mental_health_with_crisis",
+  "output_dir": "models/qwen2.5-7b-mental-health",
+
+  "batch_size": 1,
+  "num_epochs": 2,
+  "learning_rate": 2e-4,
+  "use_wandb": false,
+
+  "use_4bit": true,
+  "lora_r": 64,
+  "lora_alpha": 128,
+  "lora_dropout": 0.05,
+  "lora_target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+
+  "max_length": 1024,
+  "gradient_accumulation_steps": 4,
+  "eval_batch_size": 1,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "logging_steps": 25,
+  "eval_steps": 300,
+  "save_steps": 600,
+  "save_total_limit": 3,
+
+  "fp16": true,
+  "bf16": false,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "paged_adamw_8bit",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+
+  "ddp_find_unused_parameters": false,
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "8x RTX 2080 Ti: 11GB VRAM each (88GB total)",
+    "Expected VRAM usage: ~8-10GB per GPU",
+    "Effective batch size: 8 GPUs × 1 batch × 4 accum = 32",
+    "Higher LoRA rank (64) since more memory available",
+    "Longer sequences (1024) possible",
+    "Uses FP16 (not BF16) - RTX 2080 Ti compute capability 7.5 doesn't support native BF16",
+    "Launch with: torchrun --nproc_per_node=8 scripts/train_qwen_counsel_multi_gpu.py --config configs/qwen_7b_8x2080ti.json"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/qwen2.5-1.5b-mental-health",
+
+  "batch_size": 2,
+  "num_epochs": 3,
+  "learning_rate": 2e-4,
+  "use_wandb": false,
+
+  "use_4bit": true,
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "lora_target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+
+  "max_length": 1024,
+  "gradient_accumulation_steps": 8,
+  "eval_batch_size": 4,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "logging_steps": 10,
+  "eval_steps": 100,
+  "save_steps": 200,
+  "save_total_limit": 3,
+
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss"
+}
