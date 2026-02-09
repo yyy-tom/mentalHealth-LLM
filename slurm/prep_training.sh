@@ -2,11 +2,11 @@
 #SBATCH --job-name=prep-qwen7b
 #SBATCH --output=logs/prep_%j.out
 #SBATCH --error=logs/prep_%j.err
-#SBATCH --partition=gpu_2h
+#SBATCH --partition=gpu_72h
 #SBATCH --qos=gpu
 #SBATCH --account=gpu
-#SBATCH --gres=gpu:rtx2080:1
-#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:rtx2080:8
+#SBATCH -c 30
 #SBATCH --time=02:00:00
 
 # ============================================

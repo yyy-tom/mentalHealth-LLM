@@ -24,6 +24,9 @@ cuda = [
     "trl>=0.7.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["mental_health_llm"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
