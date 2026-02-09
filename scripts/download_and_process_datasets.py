@@ -49,6 +49,22 @@ import re
 import sys
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Set HuggingFace cache BEFORE importing datasets/transformers to avoid
+# writing to ~/.cache (home directory has limited quota on the cluster).
+# The env vars can be overridden externally (e.g. in the SLURM script).
+# ---------------------------------------------------------------------------
+_SCRIPT_DIR = Path(__file__).parent.absolute()
+_PROJECT_ROOT = _SCRIPT_DIR.parent
+_DEFAULT_CACHE = _PROJECT_ROOT / ".cache" / "huggingface"
+
+if "HF_HOME" not in os.environ:
+    os.environ["HF_HOME"] = str(_DEFAULT_CACHE)
+if "HF_DATASETS_CACHE" not in os.environ:
+    os.environ["HF_DATASETS_CACHE"] = str(Path(os.environ["HF_HOME"]) / "datasets")
+os.makedirs(os.environ["HF_HOME"], exist_ok=True)
+os.makedirs(os.environ["HF_DATASETS_CACHE"], exist_ok=True)
+
 import pandas as pd
 from datasets import (
     Dataset,
@@ -235,10 +251,11 @@ def download_suicide_watch_csv(output_csv: str) -> str:
                 return output_csv
         raise FileNotFoundError("CSV not found after download")
     except (FileNotFoundError, subprocess.CalledProcessError) as e:
-        print(f"  x Kaggle download failed: {e}")
+        print(f"  ! Kaggle download failed: {e}")
         print("    Install kaggle CLI and set up ~/.kaggle/kaggle.json")
         print("    Or use --suicide_csv /path/to/Suicide_Detection.csv")
-        sys.exit(1)
+        print("    Skipping Suicide Watch dataset (pipeline continues).")
+        return ""
 
 
 def process_suicide_watch(

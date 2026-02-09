@@ -29,9 +29,9 @@ cd "$PROJECT_DIR" || exit 1
 # Activate virtual environment
 source .venv/bin/activate
 
-# Set cache directories
-export HF_HOME="$PROJECT_DIR/.cache/huggingface"
-export TRANSFORMERS_CACHE="$HF_HOME/transformers"
+# Cache on research partition — NOT home dir (quota limit)
+export HF_HOME="/research/d7/fyp25/yyyu2/.cache/huggingface"
+export TRANSFORMERS_CACHE="$HF_HOME/hub"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
 

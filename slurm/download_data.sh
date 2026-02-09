@@ -29,9 +29,11 @@ PROJECT_DIR="/research/d7/fyp25/yyyu2/LLM"
 cd "$PROJECT_DIR" || exit 1
 source .venv/bin/activate
 
-export HF_HOME="$PROJECT_DIR/.cache/huggingface"
+# Cache on research partition — NOT home dir (quota limit)
+export HF_HOME="/research/d7/fyp25/yyyu2/.cache/huggingface"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
-mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" logs
+export TRANSFORMERS_CACHE="$HF_HOME/hub"
+mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$TRANSFORMERS_CACHE" logs
 
 # ------- Run the pipeline -------
 # Rebuilds datasets/all_mental_health_combined from scratch:
@@ -39,15 +41,22 @@ mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" logs
 #   - Re-downloads & processes: MentalChat16K, Empathetic Counseling, Suicide Watch
 #   - Combines everything + pre-tokenizes
 
-# Option A: Full rebuild (HuggingFace + Kaggle + combine + tokenize)
-#   Requires: pip install kaggle && ~/.kaggle/kaggle.json
+# Option A: Skip Kaggle (no kaggle CLI on cluster) — default
 python3 scripts/download_and_process_datasets.py \
+    --skip_kaggle \
     --tokenize \
     --config configs/qwen_7b_8x2080ti.json
 
 # Option B: Kaggle CSV already on remote (transferred via scp)
+#   scp datasets/kaggle_suicide_watch/Suicide_Detection.csv remote:LLM/datasets/kaggle_suicide_watch/
 # python3 scripts/download_and_process_datasets.py \
 #     --suicide_csv datasets/kaggle_suicide_watch/Suicide_Detection.csv \
+#     --tokenize \
+#     --config configs/qwen_7b_8x2080ti.json
+
+# Option C: Full rebuild with Kaggle CLI
+#   Requires: pip install kaggle && ~/.kaggle/kaggle.json
+# python3 scripts/download_and_process_datasets.py \
 #     --tokenize \
 #     --config configs/qwen_7b_8x2080ti.json
 
