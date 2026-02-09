@@ -34,21 +34,38 @@ export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" logs
 
 # ------- Run the pipeline -------
-# Option A: Full pipeline (HuggingFace + Kaggle + combine + tokenize)
-#   Requires: ~/.kaggle/kaggle.json
+# Rebuilds datasets/all_mental_health_combined from scratch:
+#   - Reuses existing *_processed folders (counsel_chat, amod, esconv, cactus, kaggle)
+#   - Re-downloads & processes: MentalChat16K, Empathetic Counseling, Suicide Watch
+#   - Combines everything + pre-tokenizes
+
+# Option A: Full rebuild (HuggingFace + Kaggle + combine + tokenize)
+#   Requires: pip install kaggle && ~/.kaggle/kaggle.json
 python3 scripts/download_and_process_datasets.py \
     --tokenize \
     --config configs/qwen_7b_8x2080ti.json
 
-# Option B: Skip Kaggle download (if CSV was transferred manually)
+# Option B: Kaggle CSV already on remote (transferred via scp)
 # python3 scripts/download_and_process_datasets.py \
 #     --suicide_csv datasets/kaggle_suicide_watch/Suicide_Detection.csv \
 #     --tokenize \
 #     --config configs/qwen_7b_8x2080ti.json
 
-# Option C: Skip Kaggle entirely
+# Option C: Skip Kaggle entirely (only add empathetic counseling)
 # python3 scripts/download_and_process_datasets.py \
 #     --skip_kaggle \
+#     --tokenize \
+#     --config configs/qwen_7b_8x2080ti.json
+
+# Option D: No downloads — reuse all existing *_processed (combine-only)
+# python3 scripts/download_and_process_datasets.py \
+#     --skip_downloads \
+#     --tokenize \
+#     --config configs/qwen_7b_8x2080ti.json
+
+# Option E: Force re-process everything (re-download from HF/Kaggle)
+# python3 scripts/download_and_process_datasets.py \
+#     --force_reprocess \
 #     --tokenize \
 #     --config configs/qwen_7b_8x2080ti.json
 

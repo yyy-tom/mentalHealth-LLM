@@ -1,6 +1,6 @@
 {
   "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
-  "dataset_path": "datasets/mental_health_with_crisis",
+  "dataset_path": "datasets/all_mental_health_combined",
   "output_dir": "models/qwen2.5-1.5b-mental-health-crisis",
 
   "batch_size": 2,

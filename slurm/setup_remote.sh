@@ -99,23 +99,28 @@ mkdir -p logs models .cache/huggingface
 echo ""
 echo "Step 5: Checking datasets..."
 
-if [ -d "datasets/mental_health_with_crisis" ]; then
+if [ -d "datasets/all_mental_health_combined" ]; then
     echo "✓ Combined dataset found"
     python3 -c "
 from datasets import load_from_disk
-ds = load_from_disk('datasets/mental_health_with_crisis')
+ds = load_from_disk('datasets/all_mental_health_combined')
 print(f'  Train samples: {len(ds[\"train\"]):,}')
 print(f'  Validation samples: {len(ds[\"validation\"]):,}')
 "
 else
     echo "✗ Combined dataset not found!"
-    echo "  Make sure to sync datasets/mental_health_with_crisis/"
+    echo "  Run: python3 scripts/download_and_process_datasets.py --tokenize --config configs/qwen_7b_8x2080ti.json"
+    echo "  Or:  sbatch slurm/download_data.sh"
 fi
 
 echo ""
 echo "========================================"
 echo "Setup complete!"
 echo "========================================"
+echo ""
+echo "To prepare data (download + process + combine + tokenize):"
+echo "  python3 scripts/download_and_process_datasets.py --tokenize --config configs/qwen_7b_8x2080ti.json"
+echo "  Or: sbatch slurm/download_data.sh"
 echo ""
 echo "To submit a training job:"
 echo "  sbatch slurm/train_7b_8x2080ti.sh   # For 8x RTX 2080 Ti"
