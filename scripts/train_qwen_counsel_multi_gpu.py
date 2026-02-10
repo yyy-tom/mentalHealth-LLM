@@ -562,13 +562,14 @@ class MultiGPUTrainer:
             callbacks.append(EarlyStoppingCallback(early_stopping_patience=3))
         
         # Setup trainer
+        # Note: transformers v5+ renamed `tokenizer` to `processing_class`
         trainer = Trainer(
             model=self.model,
             args=training_args,
             train_dataset=tokenized_dataset["train"],
             eval_dataset=tokenized_dataset["validation"],
             data_collator=data_collator,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
             callbacks=callbacks,
         )
         
