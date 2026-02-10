@@ -45,10 +45,11 @@ echo "========================================"
 
 # Reinstall torch packages with matching versions to fix compatibility
 # Use uv pip if available, otherwise fall back to pip
+# --python ensures uv targets the venv, not the system Python
 if command -v uv &> /dev/null; then
-    uv pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    uv pip install --python "$VIRTUAL_ENV/bin/python" --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 else
-    pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    "$VIRTUAL_ENV/bin/pip" install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 fi
 
 echo ""

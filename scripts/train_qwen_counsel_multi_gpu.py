@@ -192,13 +192,15 @@ class MultiGPUTrainer:
             try:
                 import bitsandbytes as bnb
                 from transformers import BitsAndBytesConfig
+                # Use float16 compute dtype — RTX 2080 Ti (sm_75) does NOT support native bfloat16
+                bnb_compute_dtype = torch.float16
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16
+                    bnb_4bit_compute_dtype=bnb_compute_dtype,
                 )
-                logger.info("Using 4-bit quantization with BitsAndBytes")
+                logger.info(f"Using 4-bit quantization with BitsAndBytes (compute_dtype={bnb_compute_dtype})")
             except ImportError as e:
                 logger.error("="*60)
                 logger.error("BitsAndBytes not available but required for 4-bit quantization!")
@@ -219,23 +221,31 @@ class MultiGPUTrainer:
         # We'll use DDP which works with quantized models
         if bnb_config:
             logger.info("Loading model with 4-bit quantization...")
-            # For DDP with quantized models, set CUDA device before loading
-            # Each process will load the model on its assigned GPU
             local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            world_size = int(os.environ.get("WORLD_SIZE", 1))
             torch.cuda.set_device(local_rank)
             device = torch.device(f"cuda:{local_rank}")
-            
-            # For BitsAndBytes with DDP, use device_map to specify the device
-            # Each process loads the model on its assigned GPU
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                quantization_config=bnb_config,
-                device_map={"": f"cuda:{local_rank}"},  # Load on the current process's device
-                trust_remote_code=True,
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
-                cache_dir=cache_dir,
-            )
+
+            # Serialize model loading across ranks to prevent all GPUs from
+            # materializing full bf16 weights simultaneously (causes OOM on 11GB GPUs).
+            for loading_rank in range(world_size):
+                if local_rank == loading_rank:
+                    logger.info(f"Rank {local_rank}: loading model onto cuda:{local_rank}...")
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        quantization_config=bnb_config,
+                        device_map={"": device},
+                        trust_remote_code=True,
+                        torch_dtype=torch.float16,  # fp16 for RTX 2080 Ti (no native bf16)
+                        low_cpu_mem_usage=True,
+                        cache_dir=cache_dir,
+                        max_memory={local_rank: "10GiB"},  # Reserve headroom
+                    )
+                    logger.info(f"Rank {local_rank}: model loaded successfully")
+                # Barrier: wait for current rank to finish before next rank starts
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+
             logger.info(f"Model loaded with 4-bit quantization on device {device}")
             
             # Prepare model for k-bit training
