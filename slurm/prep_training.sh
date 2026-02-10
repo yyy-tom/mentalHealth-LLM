@@ -44,7 +44,12 @@ echo "Step 0: Fixing torch/torchvision versions"
 echo "========================================"
 
 # Reinstall torch packages with matching versions to fix compatibility
-pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Use uv pip if available, otherwise fall back to pip
+if command -v uv &> /dev/null; then
+    uv pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+else
+    pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+fi
 
 echo ""
 echo "========================================"
