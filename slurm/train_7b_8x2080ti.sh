@@ -39,8 +39,8 @@ export NCCL_DEBUG=WARN
 export NCCL_IB_DISABLE=0
 export NCCL_P2P_DISABLE=0
 
-# Memory optimization — expandable_segments reduces fragmentation on 11GB GPUs
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+# Memory optimization
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 
 # Print GPU info
 echo "========================================"
