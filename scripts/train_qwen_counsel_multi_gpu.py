@@ -495,6 +495,7 @@ class MultiGPUTrainer:
             "run_name": self.config.get("run_name", "qwen2.5-14b-counsel-chat-8gpu"),
             "seed": self.config.get("seed", 42),
             "ddp_find_unused_parameters": self.config.get("ddp_find_unused_parameters", False),
+            "ddp_broadcast_buffers": False,  # Don't broadcast frozen quantized buffers — saves ~2GB per GPU
             "ddp_bucket_cap_mb": 5,  # Reduce DDP bucket size to save memory during sync (lower = less memory but slower)
         }
         
