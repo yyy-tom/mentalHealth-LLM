@@ -41,16 +41,15 @@ mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$TRANSFORMERS_CACHE" logs
 #   - Re-downloads & processes: MentalChat16K, Empathetic Counseling, Suicide Watch
 #   - Combines everything + pre-tokenizes
 
-# Option A: Skip Kaggle (no kaggle CLI on cluster) — default
+# Option A: Use Suicide Watch CSV synced with the project — default
 python3 scripts/download_and_process_datasets.py \
-    --skip_kaggle \
+    --suicide_csv datasets/kaggle_suicide_watch/Suicide_Detection.csv \
     --tokenize \
     --config configs/qwen_7b_8x2080ti.json
 
-# Option B: Kaggle CSV already on remote (transferred via scp)
-#   scp datasets/kaggle_suicide_watch/Suicide_Detection.csv remote:LLM/datasets/kaggle_suicide_watch/
+# Option B: Skip Suicide Watch entirely
 # python3 scripts/download_and_process_datasets.py \
-#     --suicide_csv datasets/kaggle_suicide_watch/Suicide_Detection.csv \
+#     --skip_kaggle \
 #     --tokenize \
 #     --config configs/qwen_7b_8x2080ti.json
 

@@ -28,13 +28,18 @@ cd "$PROJECT_DIR"
 echo ""
 echo "Step 1: Creating virtual environment..."
 
-# Try uv first (faster), fall back to python venv
-if command -v uv &> /dev/null; then
-    echo "Using uv to create venv..."
-    uv venv
+# Check if venv already exists
+if [ -d ".venv" ]; then
+    echo "Virtual environment already exists, skipping creation..."
 else
-    echo "uv not found, using python venv..."
-    python3 -m venv .venv
+    # Try uv first (faster), fall back to python venv
+    if command -v uv &> /dev/null; then
+        echo "Using uv to create venv..."
+        uv venv
+    else
+        echo "uv not found, using python venv..."
+        python3 -m venv .venv
+    fi
 fi
 
 # Activate venv

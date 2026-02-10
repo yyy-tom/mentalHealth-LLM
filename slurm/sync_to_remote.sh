@@ -40,7 +40,6 @@ rsync -avz --progress \
     --exclude 'logs/*.err' \
     --exclude '.cache' \
     --exclude '*.egg-info' \
-    --exclude 'datasets/kaggle_suicide_watch/*.csv' \
     ./ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/"
 
 echo ""

@@ -40,40 +40,37 @@ mkdir -p logs
 
 echo ""
 echo "========================================"
+echo "Step 0: Fixing torch/torchvision versions"
+echo "========================================"
+
+# Reinstall torch packages with matching versions to fix compatibility
+pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+echo ""
+echo "========================================"
 echo "Step 1: Downloading Qwen2.5-7B-Instruct"
 echo "========================================"
 
+# Use huggingface_hub to download without loading (avoids memory issues)
 python3 -c "
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+from huggingface_hub import snapshot_download
+from transformers import AutoTokenizer
 
 model_name = 'Qwen/Qwen2.5-7B-Instruct'
 print(f'Downloading {model_name}...')
 
-# Download tokenizer
+# Download tokenizer first (small)
 print('Downloading tokenizer...')
 tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 print(f'Tokenizer vocab size: {len(tokenizer):,}')
 
-# Download model (this caches the weights)
+# Download model files without loading into memory
 print('Downloading model weights (this may take a while)...')
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch.float16,
-    trust_remote_code=True,
-    low_cpu_mem_usage=True,
+snapshot_download(
+    repo_id=model_name,
+    local_dir=None,  # Use default cache
+    ignore_patterns=['*.md', '*.txt'],  # Skip docs
 )
-print(f'Model downloaded successfully!')
-print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
-
-# Clean up to free memory
-del model
-del tokenizer
-import gc
-gc.collect()
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
-
 print('Model weights cached successfully!')
 "
 
