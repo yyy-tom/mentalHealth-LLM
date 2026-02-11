@@ -23,6 +23,7 @@ cuda = [
     "bitsandbytes>=0.41.0",
     "trl>=0.7.0",
 ]
+telegram = ["python-telegram-bot>=21.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["mental_health_llm"]
