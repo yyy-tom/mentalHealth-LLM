@@ -56,7 +56,7 @@ torchrun \
     --nproc_per_node=8 \
     --master_port=29500 \
     scripts/train_qwen_counsel_multi_gpu.py \
-    --config configs/qwen_7b_8x2080ti.json
+    --config configs/qwen_1.5b_lora.json
 
 echo "========================================"
 echo "Training completed at: $(date)"

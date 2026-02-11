@@ -324,7 +324,7 @@ class FullFineTuneTrainer:
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA not available — full fine-tune requires a GPU.")
         gpu = torch.cuda.get_device_properties(self.local_rank)
-        logger.info(f"[Rank {self.local_rank}] GPU: {gpu.name}, {gpu.total_mem / 1024**3:.0f} GB VRAM")
+        logger.info(f"[Rank {self.local_rank}] GPU: {gpu.name}, {gpu.total_memory / 1024**3:.0f} GB VRAM")
 
         # Setup
         self.setup_tokenizer()
