@@ -89,7 +89,7 @@ def generate_response(
     tokenizer,
     question: str,
     history: list[tuple[str, str]] | None = None,
-    max_length: int = 512,
+    max_length: int = 1024,
 ):
     """Generate a counseling response for the given question."""
     
@@ -160,9 +160,9 @@ Response:"""
             break
     
     # If response is too long, truncate at sentence boundary
-    if len(response) > 500:
+    if len(response) > 2000:
         sentences = response.split('. ')
-        response = '. '.join(sentences[:3]) + '.'
+        response = '. '.join(sentences[:10]) + '.'
     
     return response
 

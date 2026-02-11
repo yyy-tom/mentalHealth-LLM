@@ -103,7 +103,7 @@ def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
 def generate_response(
     question: str,
     history: list[tuple[str, str]] | None = None,
-    max_length: int = 512,
+    max_length: int = 1024,
 ) -> str:
     """Generate a counseling response for the given question."""
     history_block = ""
@@ -169,9 +169,9 @@ Response:"""
             response = response.split(pattern)[0].strip()
             break
 
-    if len(response) > 500:
+    if len(response) > 2000:
         sentences = response.split(". ")
-        response = ". ".join(sentences[:3]) + "."
+        response = ". ".join(sentences[:10]) + "."
 
     return response
 
