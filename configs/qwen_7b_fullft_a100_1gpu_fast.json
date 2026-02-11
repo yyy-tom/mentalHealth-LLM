@@ -1,0 +1,54 @@
+{
+  "_comment": "Qwen2.5-7B FULL fine-tune on 1x A100 80GB — optimized for ~5 hour completion",
+
+  "model_name": "Qwen/Qwen2.5-7B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/qwen2.5-7b-mental-health-fullft-a100",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 8,
+  "num_epochs": 1,
+  "max_steps": 4500,
+  "learning_rate": 5e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 2,
+  "eval_batch_size": 8,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1500,
+  "save_steps": 2000,
+  "save_total_limit": 2,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": false,
+  "early_stopping": false,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "1x NVIDIA A100 80GB SXM",
+    "A100 is ~2.5x slower than H100 for 7B training",
+    "Full 1 epoch = 9,264 steps = ~8 hours on A100",
+    "max_steps=4500 caps training at ~5 hours (sees ~72K of 148K samples = 49%)",
+    "Remove max_steps for full epoch (~8 hours) for best quality",
+    "batch_size=8 to fit in 80GB VRAM (model+optimizer ~60GB, ~20GB for activations)",
+    "Effective batch size: 1 GPU x 8 batch x 2 accum = 16",
+    "Launch: python scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_a100_1gpu_fast.json"
+  ]
+}

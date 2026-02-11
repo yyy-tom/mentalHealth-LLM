@@ -1,0 +1,52 @@
+{
+  "_comment": "Qwen2.5-7B FULL fine-tune on 1x H100 NVL 94GB — optimized for ~5 hour completion",
+
+  "model_name": "Qwen/Qwen2.5-7B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/qwen2.5-7b-mental-health-fullft-1gpu",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 16,
+  "num_epochs": 1,
+  "learning_rate": 5e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 2,
+  "eval_batch_size": 16,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1000,
+  "save_steps": 2000,
+  "save_total_limit": 2,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": false,
+  "early_stopping": false,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "1x NVIDIA H100 NVL 94GB (Azure NC40ads_H100_v5)",
+    "Optimized for ~5 hour training on single GPU",
+    "batch_size=16 to maximize GPU utilization with 94GB VRAM",
+    "1 epoch with higher LR (5e-5) for faster convergence",
+    "Effective batch size: 1 GPU x 16 batch x 2 accum = 32",
+    "max_length=512 to reduce per-step compute (avg sample ~470 tokens)",
+    "Launch: python scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_h100_1gpu_fast.json"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "_comment": "Qwen2.5-7B FULL fine-tune on 2x H100 NVL 94GB — optimized for ~5 hour completion",
+
+  "model_name": "Qwen/Qwen2.5-7B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/qwen2.5-7b-mental-health-fullft-2gpu",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 16,
+  "num_epochs": 2,
+  "learning_rate": 3e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 2,
+  "eval_batch_size": 16,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1000,
+  "save_steps": 2000,
+  "save_total_limit": 2,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+  "early_stopping": false,
+
+  "ddp_find_unused_parameters": false,
+  "ddp_broadcast_buffers": false,
+  "ddp_bucket_cap_mb": 25,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "2x NVIDIA H100 NVL 94GB (Azure NC80ads_H100_v5)",
+    "Optimized for ~5 hour training with DDP",
+    "batch_size=16 to maximize GPU utilization with 94GB VRAM",
+    "2 epochs with moderate LR (3e-5) for good quality within time budget",
+    "Effective batch size: 2 GPUs x 16 batch x 2 accum = 64",
+    "max_length=512 to reduce per-step compute (avg sample ~470 tokens)",
+    "Launch: torchrun --nproc_per_node=2 scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_h100_2gpu_fast.json"
+  ]
+}

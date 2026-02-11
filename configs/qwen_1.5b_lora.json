@@ -1,39 +1,64 @@
 {
+  "_comment": "Qwen2.5-1.5B on 8x RTX 2080 Ti (11GB each) — QLoRA with DDP",
+
   "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
   "dataset_path": "datasets/all_mental_health_combined",
   "output_dir": "models/qwen2.5-1.5b-mental-health",
 
-  "batch_size": 2,
+  "batch_size": 4,
   "num_epochs": 3,
   "learning_rate": 2e-4,
   "use_wandb": false,
 
   "use_4bit": true,
-  "lora_r": 16,
-  "lora_alpha": 32,
+  "lora_r": 64,
+  "lora_alpha": 128,
   "lora_dropout": 0.05,
-  "lora_target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+  "lora_target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj"
+  ],
 
   "max_length": 1024,
-  "gradient_accumulation_steps": 8,
+  "gradient_accumulation_steps": 4,
   "eval_batch_size": 4,
 
   "weight_decay": 0.01,
   "warmup_ratio": 0.03,
-  "logging_steps": 10,
-  "eval_steps": 100,
-  "save_steps": 200,
+  "logging_steps": 25,
+  "eval_steps": 300,
+  "save_steps": 600,
   "save_total_limit": 3,
 
-  "bf16": true,
+  "fp16": true,
+  "bf16": false,
   "seed": 42,
 
   "gradient_checkpointing": true,
-  "optim": "adamw_torch_fused",
+  "optim": "paged_adamw_8bit",
   "lr_scheduler_type": "cosine",
 
   "save_strategy": "steps",
   "eval_strategy": "steps",
   "load_best_model_at_end": true,
-  "metric_for_best_model": "eval_loss"
+  "metric_for_best_model": "eval_loss",
+
+  "ddp_find_unused_parameters": false,
+  "dataloader_num_workers": 0,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "8x RTX 2080 Ti: 11GB VRAM each (88GB total)",
+    "1.5B in 4-bit ≈ 1.5GB per GPU — plenty of headroom",
+    "Effective batch size: 8 GPUs × 4 batch × 4 accum = 128",
+    "Full LoRA rank 64 on all 7 modules for maximum quality",
+    "Long sequences (1024) fit easily",
+    "Uses FP16 (not BF16) — RTX 2080 Ti compute capability 7.5",
+    "Launch: torchrun --nproc_per_node=8 scripts/train_qwen_counsel_multi_gpu.py --config configs/qwen_1.5b_lora.json"
+  ]
 }
