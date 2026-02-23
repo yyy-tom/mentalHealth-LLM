@@ -18,7 +18,7 @@ echo "Pre-training Preparation"
 echo "Start time: $(date)"
 echo "========================================"
 
-PROJECT_DIR="$HOME/LLM"
+PROJECT_DIR="/workspace/LLM"
 CONFIG="configs/qwen_7b_fullft_h100_8gpu.json"
 
 cd "$PROJECT_DIR" || exit 1

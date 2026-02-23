@@ -20,7 +20,7 @@ echo "Dataset Download & Processing (all scripts)"
 echo "Start time: $(date)"
 echo "========================================"
 
-PROJECT_DIR="$HOME/LLM"
+PROJECT_DIR="/workspace/LLM"
 cd "$PROJECT_DIR" || exit 1
 source .venv/bin/activate
 
@@ -130,9 +130,9 @@ for ds in "${PROCESSED[@]}"; do
 done
 
 python3 scripts/data/combine_all_datasets.py \
-    --datasets "${PROCESSED[@]}" \
-    --output_dir "$DATASETS_DIR/all_mental_health_combined" \
-    --exclude_chinese
+    --datasets "/workspace/LLM/datasets/*" \
+    --output_dir "/workspace/LLM/datasets/all_mental_health_combined" \
+    --include_chinese
 
 echo ""
 echo "========================================"

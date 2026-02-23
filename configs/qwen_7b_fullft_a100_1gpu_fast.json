@@ -8,7 +8,7 @@
   "full_finetune": true,
   "use_4bit": false,
 
-  "batch_size": 4,
+  "batch_size": 6,
   "num_epochs": 1,
   "max_steps": 4500,
   "learning_rate": 5e-5,

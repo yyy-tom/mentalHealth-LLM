@@ -14,14 +14,14 @@
 set -euo pipefail
 
 echo "========================================"
-echo "Qwen2.5-7B Full Fine-Tune — 8x H100 DDP"
+echo "Qwen2.5-7B Full Fine-Tune — 1x A100 DDP"
 echo "Start time: $(date)"
 echo "========================================"
 
 # ---------- Configuration ----------
-PROJECT_DIR="$HOME/LLM"
-CONFIG="configs/qwen_7b_fullft_h100_8gpu.json"
-NUM_GPUS=8
+PROJECT_DIR="/workspace/LLM"
+CONFIG="configs/qwen_7b_fullft_a100_1gpu_fast.json"
+NUM_GPUS=1
 
 cd "$PROJECT_DIR" || { echo "ERROR: $PROJECT_DIR not found"; exit 1; }
 source .venv/bin/activate

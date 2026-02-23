@@ -17,7 +17,7 @@ echo "========================================"
 echo "GCP Environment Setup"
 echo "========================================"
 
-PROJECT_DIR="$HOME/LLM"
+PROJECT_DIR="/workspace/LLM"
 
 if [ ! -d "$PROJECT_DIR" ]; then
     echo "ERROR: Project not found at $PROJECT_DIR"
