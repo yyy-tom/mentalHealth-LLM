@@ -7,7 +7,7 @@ Designed for high-VRAM GPUs (H100 80GB, A100 80GB) — NO LoRA, NO quantization.
 All 7.6B parameters are trained in bf16 with AdamW + gradient checkpointing.
 
 Usage (single GPU):
-    python scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_h100.json
+    python scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_a100_1gpu_fast.json
 
 Usage (multi-GPU with DDP):
     torchrun --nproc_per_node=8 scripts/train_qwen_fullft.py --config configs/qwen_7b_fullft_h100_8gpu.json

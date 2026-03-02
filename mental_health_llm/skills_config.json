@@ -1,0 +1,153 @@
+{
+  "skills": [
+    {
+      "name": "crisis-intervention",
+      "description": "Immediate safety-focused response for users expressing suicidal ideation, self-harm, or acute distress",
+      "priority": 100,
+      "adapter_path": "adapters/crisis-intervention",
+      "system_prompt": "You are a crisis intervention specialist. Your top priority is the user's immediate safety. Always validate their feelings, assess risk, provide the 988 Suicide & Crisis Lifeline number, and encourage them to reach out to emergency services if in immediate danger. Never minimize their pain or dismiss their feelings.",
+      "keywords": [
+        "kill myself", "end my life", "want to die", "suicide", "suicidal",
+        "self-harm", "self harm", "cutting myself", "hurt myself",
+        "end it all", "no reason to live", "better off dead",
+        "better off without me", "can't go on", "don't want to live",
+        "take my own life", "overdose", "jump off", "hang myself",
+        "slit my wrists", "no point in living", "planning to die",
+        "goodbye letter", "final note", "not worth living",
+        "want to disappear", "wish I was dead", "wish i were dead"
+      ],
+      "patterns": [
+        "\\b(sui[cs]id|self[- ]?harm|kill\\s+(my|him|her)self)\\b",
+        "\\b(end|take)\\s+(my|his|her|their)\\s+(life|own\\s+life)\\b",
+        "\\bwant\\s+to\\s+die\\b",
+        "\\bbetter\\s+off\\s+(dead|without\\s+me)\\b",
+        "\\bno\\s+(reason|point)\\s+(to|in)\\s+liv(e|ing)\\b",
+        "\\b(don'?t|do\\s+not)\\s+want\\s+to\\s+(live|be\\s+alive|exist)\\b",
+        "\\b(plan|planning|planned)\\s+to\\s+(die|end|kill)\\b"
+      ]
+    },
+    {
+      "name": "cbt-therapy",
+      "description": "Cognitive Behavioral Therapy techniques for identifying and restructuring negative thought patterns",
+      "priority": 50,
+      "adapter_path": "adapters/cbt-therapy",
+      "system_prompt": "You are a CBT-trained mental health counselor. Help users identify cognitive distortions, challenge negative automatic thoughts, and develop healthier thinking patterns. Use techniques like thought records, behavioral experiments, and cognitive restructuring. Be structured and technique-focused while remaining warm and supportive.",
+      "keywords": [
+        "cognitive distortion", "thought pattern", "negative thinking",
+        "catastrophizing", "black and white thinking", "all or nothing",
+        "overgeneralizing", "mind reading", "fortune telling",
+        "should statements", "labeling", "personalization",
+        "cbt", "cognitive behavioral", "thought record",
+        "automatic thoughts", "thinking errors", "cognitive restructuring",
+        "thought challenging", "behavioral experiment",
+        "core beliefs", "intermediate beliefs", "thinking trap"
+      ],
+      "patterns": [
+        "\\bcbt\\b",
+        "\\bcognitive\\s+(behavioral|behaviour|distortion|restructuring)\\b",
+        "\\bthought\\s+(pattern|record|challenging|trap)\\b",
+        "\\b(negative|automatic)\\s+thought\\b",
+        "\\b(catastrophiz|overgeneraliz|personaliz)\\w*\\b",
+        "\\ball[- ]or[- ]nothing\\b",
+        "\\bblack[- ]and[- ]white\\s+thinking\\b"
+      ]
+    },
+    {
+      "name": "psychoeducation",
+      "description": "Educational information about mental health conditions, symptoms, and treatments",
+      "priority": 40,
+      "adapter_path": "adapters/psychoeducation",
+      "system_prompt": "You are a knowledgeable mental health educator. Provide clear, accurate, and accessible information about mental health conditions, symptoms, causes, and treatment options. Use evidence-based information while being empathetic. Help users understand their experiences through a psychoeducational lens.",
+      "keywords": [
+        "what is depression", "what is anxiety", "what is ptsd",
+        "what is ocd", "what is bipolar", "what is schizophrenia",
+        "what is adhd", "what is autism", "what is bpd",
+        "symptoms of", "signs of", "causes of",
+        "types of therapy", "treatment options", "medication for",
+        "mental health condition", "mental illness", "mental disorder",
+        "diagnosis", "diagnosed with", "how is it treated",
+        "what are the symptoms", "explain depression", "explain anxiety",
+        "difference between", "normal vs", "how does therapy work",
+        "psychoeducation", "mental health education",
+        "what causes", "risk factors", "prognosis"
+      ],
+      "patterns": [
+        "\\bwhat\\s+is\\s+(depression|anxiety|ptsd|ocd|bipolar|adhd|bpd|schizophrenia|autism|anorexia|bulimia|insomnia|agoraphobia|panic\\s+disorder)\\b",
+        "\\b(symptoms?|signs?|causes?)\\s+of\\s+\\w+\\b",
+        "\\b(explain|define|describe)\\s+(depression|anxiety|ptsd|ocd|bipolar|adhd|mental\\s+health)\\b",
+        "\\bhow\\s+(does|do)\\s+(therapy|medication|treatment|counseling)\\s+work\\b",
+        "\\bwhat\\s+are\\s+the\\s+(symptoms?|signs?|causes?|types?)\\b",
+        "\\bdifference\\s+between\\s+\\w+\\s+and\\s+\\w+\\b",
+        "\\btreatment\\s+(options?|for)\\b"
+      ]
+    },
+    {
+      "name": "empathetic-listening",
+      "description": "Active listening and emotional validation for users who need to be heard",
+      "priority": 30,
+      "adapter_path": "adapters/empathetic-listening",
+      "system_prompt": "You are a deeply empathetic mental health counselor specializing in active listening and emotional support. Your primary role is to make users feel truly heard and validated. Reflect their emotions, ask clarifying questions, and provide unconditional positive regard. Focus on emotional processing rather than advice-giving unless asked.",
+      "keywords": [
+        "feeling lonely", "feeling alone", "no one understands",
+        "need to talk", "need someone to listen", "just need to vent",
+        "feeling overwhelmed", "can't cope", "falling apart",
+        "emotional pain", "heartbroken", "devastated",
+        "feeling lost", "don't know what to do", "confused about my feelings",
+        "grief", "grieving", "loss of", "mourning",
+        "feeling empty", "numb", "disconnected",
+        "frustrated", "angry at myself", "hate myself",
+        "ashamed", "embarrassed", "guilty",
+        "scared", "terrified", "anxious about everything"
+      ],
+      "patterns": [
+        "\\b(feel|feeling)\\s+(so\\s+)?(lonely|alone|lost|empty|numb|overwhelmed|hopeless|helpless|sad|scared|angry|frustrated|confused|broken|worthless)\\b",
+        "\\bno\\s+one\\s+(understands?|cares?|listens?)\\b",
+        "\\bneed\\s+(to\\s+)?(talk|vent|someone\\s+to\\s+listen)\\b",
+        "\\b(can'?t|cannot)\\s+(cope|handle|take\\s+it|deal\\s+with)\\b",
+        "\\b(griev|mourn|bereav)\\w*\\b",
+        "\\bhate\\s+myself\\b",
+        "\\bfalling\\s+apart\\b"
+      ]
+    },
+    {
+      "name": "professional-counseling",
+      "description": "Structured therapeutic guidance for specific life challenges and relationship issues",
+      "priority": 20,
+      "adapter_path": "adapters/professional-counseling",
+      "system_prompt": "You are a professional mental health counselor providing structured therapeutic guidance. Address specific life challenges including relationship issues, career stress, family conflicts, and personal growth. Use established counseling techniques and provide actionable advice while maintaining professional boundaries.",
+      "keywords": [
+        "relationship problems", "marriage issues", "divorce",
+        "family conflict", "parenting", "toxic relationship",
+        "workplace stress", "career change", "job burnout",
+        "self-esteem", "self-confidence", "self-worth",
+        "communication skills", "boundary setting", "boundaries",
+        "anger management", "stress management", "coping strategies",
+        "life transition", "identity crisis", "midlife crisis",
+        "trauma recovery", "past trauma", "childhood trauma",
+        "addiction", "substance abuse", "codependency",
+        "perfectionism", "procrastination", "motivation"
+      ],
+      "patterns": [
+        "\\b(relationship|marriage|partner|spouse|boyfriend|girlfriend)\\s+(problem|issue|conflict|trouble|crisis)\\b",
+        "\\b(workplace|job|career|work)\\s+(stress|burnout|anxiety|conflict|problem)\\b",
+        "\\b(family|parent|sibling|child)\\s+(conflict|issue|problem|dynamic)\\b",
+        "\\b(self[- ]?esteem|self[- ]?worth|self[- ]?confidence)\\b",
+        "\\b(anger|stress|time)\\s+management\\b",
+        "\\b(coping|healing|recovery)\\s+(strategy|strategies|mechanism|technique)\\b",
+        "\\bset(ting)?\\s+boundar(y|ies)\\b",
+        "\\b(addiction|codependen|substance\\s+abuse)\\w*\\b"
+      ]
+    },
+    {
+      "name": "general-support",
+      "description": "General mental health support and guidance for everyday concerns",
+      "priority": 0,
+      "adapter_path": "adapters/general-support",
+      "system_prompt": "You are a compassionate and professional mental health counselor. Provide helpful, empathetic, and evidence-based support for the user's concerns. Acknowledge their feelings, offer practical advice, suggest professional resources if appropriate, and maintain a warm, non-judgmental tone.",
+      "keywords": [],
+      "patterns": []
+    }
+  ],
+  "default_skill": "general-support",
+  "confidence_threshold": 0.3
+}
