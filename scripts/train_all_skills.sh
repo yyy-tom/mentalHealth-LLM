@@ -127,15 +127,17 @@ for SKILL in $SKILLS; do
             fi
             ;;
         8x2080ti)
-            # Multi-GPU via torchrun on 11GB GPUs:
-            #   - 4-bit quantization required (7B model = ~14GB in bf16, won't fit)
-            #   - max_length=512 to reduce activation memory
+            # Multi-GPU via torchrun on 11GB GPUs (10.57 GiB usable):
+            #   - 4-bit quantization (7B model = ~3.5GB in NF4)
+            #   - batch_size=1 (logits tensor = batch*seq*152K*4B, batch=4 OOMs)
+            #   - grad_accum=32 (effective batch = 32 * NUM_GPUS)
+            #   - max_length=256 to reduce activation memory
             #   - lora_r=16 to reduce trainable params memory
             # Auto-detect GPU count (SLURM may allocate fewer than 8)
             NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
             NUM_GPUS=${NUM_GPUS:-8}
             echo "Detected $NUM_GPUS GPUs for torchrun"
-            TORCHRUN_CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=29500 scripts/train_skill_lora.py --skill $SKILL --use-4bit --max-length 512 --lora-r 16"
+            TORCHRUN_CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=29500 scripts/train_skill_lora.py --skill $SKILL --use-4bit --max-length 256 --lora-r 16 --batch-size 1 --grad-accum 32"
             if [ -n "$CONFIG" ]; then
                 TORCHRUN_CMD="$TORCHRUN_CMD --config $CONFIG"
             fi

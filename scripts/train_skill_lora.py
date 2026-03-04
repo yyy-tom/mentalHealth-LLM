@@ -551,6 +551,18 @@ def main():
         default=None,
         help="Override LoRA rank (default: 32, use 16 for 11GB GPUs)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Override per-device batch size (default: 4, use 1 for 11GB GPUs)",
+    )
+    parser.add_argument(
+        "--grad-accum",
+        type=int,
+        default=None,
+        help="Override gradient accumulation steps (default: 8, use 32 for batch_size=1)",
+    )
     args = parser.parse_args()
 
     # Build default config
@@ -617,6 +629,10 @@ def main():
     if args.lora_r is not None:
         config["lora_r"] = args.lora_r
         config["lora_alpha"] = args.lora_r * 2  # keep alpha = 2 * r
+    if args.batch_size is not None:
+        config["batch_size"] = args.batch_size
+    if args.grad_accum is not None:
+        config["gradient_accumulation_steps"] = args.grad_accum
 
     # Ensure output dir exists
     out = config["output_dir"]
