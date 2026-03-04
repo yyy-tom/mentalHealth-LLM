@@ -174,8 +174,10 @@ class SkillLoRATrainer:
 
         # BF16 / FP16 auto-detection
         if cuda_available:
-            local_rank = int(os.environ.get("LOCAL_RANK", 0))
-            capability = torch.cuda.get_device_capability(local_rank)
+            # Use device 0 for capability check — all GPUs on the node are
+            # the same type, and LOCAL_RANK may exceed device_count when
+            # SLURM allocates fewer GPUs than torchrun processes.
+            capability = torch.cuda.get_device_capability(0)
             bf16_supported = capability[0] >= 8
             if self.config.get("bf16", True) and not bf16_supported:
                 logger.warning("bf16 not supported on this GPU, falling back to fp16")

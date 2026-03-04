@@ -131,7 +131,11 @@ for SKILL in $SKILLS; do
             #   - 4-bit quantization required (7B model = ~14GB in bf16, won't fit)
             #   - max_length=512 to reduce activation memory
             #   - lora_r=16 to reduce trainable params memory
-            TORCHRUN_CMD="torchrun --nproc_per_node=8 --master_port=29500 scripts/train_skill_lora.py --skill $SKILL --use-4bit --max-length 512 --lora-r 16"
+            # Auto-detect GPU count (SLURM may allocate fewer than 8)
+            NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+            NUM_GPUS=${NUM_GPUS:-8}
+            echo "Detected $NUM_GPUS GPUs for torchrun"
+            TORCHRUN_CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=29500 scripts/train_skill_lora.py --skill $SKILL --use-4bit --max-length 512 --lora-r 16"
             if [ -n "$CONFIG" ]; then
                 TORCHRUN_CMD="$TORCHRUN_CMD --config $CONFIG"
             fi

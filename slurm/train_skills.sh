@@ -40,8 +40,9 @@ export TRANSFORMERS_CACHE="$HF_HOME/hub"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
 
-# CUDA settings
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+# CUDA settings — auto-detect from SLURM allocation (don't hardcode count)
+GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+export CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((GPU_COUNT - 1)))
 export NCCL_DEBUG=WARN
 export NCCL_IB_DISABLE=0
 export NCCL_P2P_DISABLE=0
