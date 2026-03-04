@@ -47,8 +47,12 @@ import argparse
 import logging
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import transformers
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
+
+_TF_MAJOR = int(transformers.__version__.split(".")[0])
+_DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -76,7 +80,7 @@ user_histories: dict[int, list[tuple[str, str]]] = {}
 
 
 def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
-    """Load the fine-tuned model (fp16, no quantization) and tokenizer."""
+    """Load the fine-tuned model with 4-bit quantization for 11GB GPUs."""
     global model, tokenizer
 
     print(f"Loading base model: {base_model}")
@@ -84,12 +88,34 @@ def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto",
-        trust_remote_code=True,
-    )
+    cuda_available = torch.cuda.is_available()
+    model_dtype = torch.float16 if cuda_available else torch.float32
+
+    # Check available VRAM — use 4-bit if less than 16GB
+    use_4bit = False
+    if cuda_available:
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        print(f"GPU VRAM: {vram_gb:.1f} GB")
+        if vram_gb < 16:
+            use_4bit = True
+            print("Using 4-bit quantization (VRAM < 16GB)")
+
+    load_kwargs = {
+        "trust_remote_code": True,
+        "device_map": {"": 0} if cuda_available else "cpu",
+        "low_cpu_mem_usage": True,
+        _DTYPE_KEY: model_dtype,
+    }
+
+    if use_4bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=model_dtype,
+        )
+
+    model = AutoModelForCausalLM.from_pretrained(base_model, **load_kwargs)
 
     try:
         model = PeftModel.from_pretrained(model, model_path)
@@ -97,6 +123,8 @@ def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
     except Exception as e:
         print(f"No LoRA weights found at {model_path}, using base model. Error: {e}")
 
+    # Note: model.eval() sets the model to inference mode
+    model.training = False
     print("Model loaded and ready.")
 
 
@@ -133,9 +161,10 @@ Response:"""
         return_tensors="pt",
         truncation=True,
         max_length=1024,
-        truncation_side="left",
     )
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    input_length = inputs["input_ids"].shape[1]
 
     with torch.no_grad():
         outputs = model.generate(
@@ -151,8 +180,9 @@ Response:"""
             no_repeat_ngram_size=3,
         )
 
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = response[len(prompt) :].strip()
+    # Extract only the newly generated tokens (skip the input prompt tokens)
+    new_tokens = outputs[0][input_length:]
+    response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
     stop_patterns = [
         "\n\nQuestion:",
