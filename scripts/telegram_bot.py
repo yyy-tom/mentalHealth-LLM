@@ -247,7 +247,13 @@ def main() -> None:
 
     load_model_and_tokenizer(args.model_path, args.base_model)
 
-    app = Application.builder().token(token).build()
+    # Configure proxy if HTTPS_PROXY is set (e.g. CSE CUHK HPC cluster)
+    builder = Application.builder().token(token)
+    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if proxy_url:
+        logger.info(f"Using proxy: {proxy_url}")
+        builder = builder.proxy(proxy_url)
+    app = builder.build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
