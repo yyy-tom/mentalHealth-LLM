@@ -212,6 +212,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     response = generate_response(user_text, history)
 
+    if not response or not response.strip():
+        response = (
+            "I'm not sure how to respond to that. "
+            "Could you tell me more about what's on your mind?"
+        )
+
     history.append((user_text, response))
     if len(history) > HISTORY_LIMIT:
         history.pop(0)
