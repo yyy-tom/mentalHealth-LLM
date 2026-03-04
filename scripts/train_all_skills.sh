@@ -117,7 +117,7 @@ for SKILL in $SKILLS; do
 
     case $HARDWARE in
         a100|4090)
-            # Single GPU
+            # Single GPU — no quantization needed (24-80GB VRAM)
             if eval $CMD; then
                 SUCCESS=$((SUCCESS + 1))
                 echo "Completed: $SKILL"
@@ -127,8 +127,11 @@ for SKILL in $SKILLS; do
             fi
             ;;
         8x2080ti)
-            # Multi-GPU via torchrun
-            TORCHRUN_CMD="torchrun --nproc_per_node=8 --master_port=29500 scripts/train_skill_lora.py --skill $SKILL"
+            # Multi-GPU via torchrun on 11GB GPUs:
+            #   - 4-bit quantization required (7B model = ~14GB in bf16, won't fit)
+            #   - max_length=512 to reduce activation memory
+            #   - lora_r=16 to reduce trainable params memory
+            TORCHRUN_CMD="torchrun --nproc_per_node=8 --master_port=29500 scripts/train_skill_lora.py --skill $SKILL --use-4bit --max-length 512 --lora-r 16"
             if [ -n "$CONFIG" ]; then
                 TORCHRUN_CMD="$TORCHRUN_CMD --config $CONFIG"
             fi

@@ -179,15 +179,19 @@ class SkillLoRATrainer:
 
         # Quantization config (optional)
         bnb_config = None
+        # Use fp16 compute dtype for GPUs without native bf16 (e.g. RTX 2080 Ti sm_75)
+        bnb_compute_dtype = torch.bfloat16 if self.config.get("bf16", True) else torch.float16
+        model_dtype = bnb_compute_dtype
+
         if use_4bit and cuda_available:
             try:
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16 if self.config.get("bf16", True) else torch.float16,
+                    bnb_4bit_compute_dtype=bnb_compute_dtype,
                 )
-                logger.info("Using 4-bit quantization")
+                logger.info(f"Using 4-bit quantization (compute_dtype={bnb_compute_dtype})")
             except ImportError:
                 logger.warning("BitsAndBytes not available, loading without quantization")
                 bnb_config = None
@@ -201,7 +205,7 @@ class SkillLoRATrainer:
             torch.cuda.set_device(local_rank)
             device = torch.device(f"cuda:{local_rank}")
 
-            # Serialize loading across DDP ranks
+            # Serialize loading across DDP ranks to avoid simultaneous OOM
             for loading_rank in range(world_size):
                 if local_rank == loading_rank:
                     logger.info(f"Rank {local_rank}: loading model...")
@@ -210,9 +214,10 @@ class SkillLoRATrainer:
                         quantization_config=bnb_config,
                         device_map={"": device},
                         trust_remote_code=True,
-                        torch_dtype=torch.bfloat16 if self.config.get("bf16", True) else torch.float16,
+                        torch_dtype=model_dtype,
                         low_cpu_mem_usage=True,
                         cache_dir=cache_dir,
+                        max_memory={local_rank: "10GiB"},
                     )
                 if torch.distributed.is_initialized():
                     torch.distributed.barrier()
@@ -220,8 +225,11 @@ class SkillLoRATrainer:
             self.model = prepare_model_for_kbit_training(self.model)
             if hasattr(self.model, "config"):
                 self.model.config.use_cache = False
+            # Disable use_cache for generation_config too
+            if hasattr(self.model, "generation_config"):
+                self.model.generation_config.use_cache = False
         else:
-            # Non-quantized loading
+            # Non-quantized loading (requires >=24GB VRAM per GPU)
             if cuda_available:
                 local_rank = int(os.environ.get("LOCAL_RANK", 0))
                 torch.cuda.set_device(local_rank)
@@ -233,7 +241,7 @@ class SkillLoRATrainer:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_name,
                             trust_remote_code=True,
-                            torch_dtype=torch.bfloat16 if self.config.get("bf16", True) else torch.float16,
+                            torch_dtype=model_dtype,
                             low_cpu_mem_usage=True,
                             device_map={"": device},
                             cache_dir=cache_dir,
@@ -355,6 +363,19 @@ class SkillLoRATrainer:
                 if steps:
                     resume_from_checkpoint = os.path.join(output_dir, f"checkpoint-{max(steps)}")
                     logger.info(f"Resuming from checkpoint: {resume_from_checkpoint}")
+
+        # Guard: 4-bit + multi-GPU requires torchrun (not DataParallel)
+        if (
+            self.config.get("use_4bit", False)
+            and torch.cuda.is_available()
+            and torch.cuda.device_count() > 1
+            and int(os.environ.get("WORLD_SIZE", 1)) == 1
+        ):
+            raise RuntimeError(
+                "Detected multiple GPUs but WORLD_SIZE=1. "
+                "4-bit models are incompatible with DataParallel. "
+                "Launch via torchrun: torchrun --nproc_per_node=N scripts/train_skill_lora.py ..."
+            )
 
         # Setup components
         self.setup_tokenizer()
@@ -503,6 +524,23 @@ def main():
         default=None,
         help="Override output directory (default: adapters/{skill})",
     )
+    parser.add_argument(
+        "--use-4bit",
+        action="store_true",
+        help="Enable 4-bit quantization (required for GPUs with <24GB VRAM)",
+    )
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=None,
+        help="Override max sequence length (default: 768, use 512 for 11GB GPUs)",
+    )
+    parser.add_argument(
+        "--lora-r",
+        type=int,
+        default=None,
+        help="Override LoRA rank (default: 32, use 16 for 11GB GPUs)",
+    )
     args = parser.parse_args()
 
     # Build default config
@@ -562,6 +600,13 @@ def main():
         config["dataset_path"] = args.dataset_path
     if args.output_dir:
         config["output_dir"] = args.output_dir
+    if args.use_4bit:
+        config["use_4bit"] = True
+    if args.max_length is not None:
+        config["max_length"] = args.max_length
+    if args.lora_r is not None:
+        config["lora_r"] = args.lora_r
+        config["lora_alpha"] = args.lora_r * 2  # keep alpha = 2 * r
 
     # Ensure output dir exists
     out = config["output_dir"]
