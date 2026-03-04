@@ -29,6 +29,7 @@ from typing import Any, Dict
 
 import torch
 from datasets import load_from_disk
+import transformers
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -45,6 +46,10 @@ from peft import (
     get_peft_model,
     prepare_model_for_kbit_training,
 )
+
+# transformers v5+ renamed torch_dtype -> dtype
+_TF_MAJOR = int(transformers.__version__.split(".")[0])
+_DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -185,16 +190,19 @@ class SkillLoRATrainer:
 
         if use_4bit and cuda_available:
             try:
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=bnb_compute_dtype,
-                )
-                logger.info(f"Using 4-bit quantization (compute_dtype={bnb_compute_dtype})")
+                import bitsandbytes as _bnb  # noqa: F401 — verify installed
             except ImportError:
-                logger.warning("BitsAndBytes not available, loading without quantization")
-                bnb_config = None
+                raise ImportError(
+                    "4-bit quantization requires bitsandbytes: "
+                    "pip install -U bitsandbytes>=0.46.1"
+                )
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=bnb_compute_dtype,
+            )
+            logger.info(f"Using 4-bit quantization (compute_dtype={bnb_compute_dtype})")
 
         cache_dir = os.environ.get("TRANSFORMERS_CACHE", None)
 
@@ -214,10 +222,10 @@ class SkillLoRATrainer:
                         quantization_config=bnb_config,
                         device_map={"": device},
                         trust_remote_code=True,
-                        torch_dtype=model_dtype,
                         low_cpu_mem_usage=True,
                         cache_dir=cache_dir,
                         max_memory={local_rank: "10GiB"},
+                        **{_DTYPE_KEY: model_dtype},
                     )
                 if torch.distributed.is_initialized():
                     torch.distributed.barrier()
@@ -241,10 +249,10 @@ class SkillLoRATrainer:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_name,
                             trust_remote_code=True,
-                            torch_dtype=model_dtype,
                             low_cpu_mem_usage=True,
                             device_map={"": device},
                             cache_dir=cache_dir,
+                            **{_DTYPE_KEY: model_dtype},
                         )
                     if torch.distributed.is_initialized():
                         torch.distributed.barrier()
@@ -252,9 +260,9 @@ class SkillLoRATrainer:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
                     trust_remote_code=True,
-                    torch_dtype=torch.float32,
                     low_cpu_mem_usage=True,
                     cache_dir=cache_dir,
+                    **{_DTYPE_KEY: torch.float32},
                 )
 
         # Apply LoRA adapter
