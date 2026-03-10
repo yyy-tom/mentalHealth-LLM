@@ -134,34 +134,32 @@ def generate_response(
     max_length: int = 1024,
 ) -> str:
     """Generate a counseling response for the given question."""
-    history_block = ""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a compassionate and professional mental health counselor. "
+                "Please provide helpful, empathetic, and evidence-based advice. "
+                "Your responses should:\n"
+                "1. Acknowledge the person's feelings\n"
+                "2. Offer practical advice\n"
+                "3. Suggest professional resources if appropriate\n"
+                "4. Maintain a warm, non-judgmental tone"
+            ),
+        }
+    ]
+
     if history:
-        history_lines = []
         for user_turn, counselor_turn in history:
-            history_lines.append(f"User: {user_turn}")
-            history_lines.append(f"Counselor: {counselor_turn}")
-        history_block = "\n".join(history_lines).strip()
-        if history_block:
-            history_block += "\n\n"
+            messages.append({"role": "user", "content": user_turn})
+            messages.append({"role": "assistant", "content": counselor_turn})
 
-    prompt = f"""{history_block}You are a compassionate and professional mental health counselor. Please provide helpful, empathetic, and evidence-based advice for the following question.
+    messages.append({"role": "user", "content": question})
 
-Question: {question}
-
-Please provide a thoughtful and supportive response that:
-1. Acknowledges the person's feelings
-2. Offers practical advice
-3. Suggests professional resources if appropriate
-4. Maintains a warm, non-judgmental tone
-
-Response:"""
-
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=1024,
+    prompt = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=False
     )
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_length = inputs["input_ids"].shape[1]
@@ -176,28 +174,10 @@ Response:"""
             top_k=50,
             repetition_penalty=1.1,
             pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            no_repeat_ngram_size=3,
         )
 
-    # Extract only the newly generated tokens (skip the input prompt tokens)
     new_tokens = outputs[0][input_length:]
     response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-
-    stop_patterns = [
-        "\n\nQuestion:",
-        "\n\nHuman:",
-        "\n\nUser:",
-        "[End]",
-        "\n\nBased on",
-        "\n\nThis response",
-        "\n\nYou need to",
-        "\n\nHuman Resources",
-    ]
-    for pattern in stop_patterns:
-        if pattern in response:
-            response = response.split(pattern)[0].strip()
-            break
 
     if len(response) > 2000:
         sentences = response.split(". ")

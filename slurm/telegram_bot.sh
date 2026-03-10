@@ -5,8 +5,8 @@
 #SBATCH --partition=gpu_72h
 #SBATCH --qos=gpu
 #SBATCH --account=gpu
-#SBATCH --gres=gpu:rtx2080:1
-#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:rtx2080:8
+#SBATCH --cpus-per-task=30
 #SBATCH --time=72:00:00
 
 # ============================================
