@@ -44,12 +44,15 @@ def _configure_large_disk_cache() -> None:
 _configure_large_disk_cache()
 
 import argparse
+import asyncio
 import logging
+import tempfile
 
 import torch
 import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
+from faster_whisper import WhisperModel
 
 _TF_MAJOR = int(transformers.__version__.split(".")[0])
 _DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
@@ -74,9 +77,30 @@ HISTORY_LIMIT = 6
 # Global model/tokenizer — loaded once at startup
 model = None
 tokenizer = None
+whisper_model = None
 
 # Per-user conversation history: {user_id: [(user_msg, bot_msg), ...]}
 user_histories: dict[int, list[tuple[str, str]]] = {}
+
+# Per-user voice language preference: {user_id: language_code or None}
+user_languages: dict[int, str | None] = {}
+
+# Server-wide default language (set via --whisper_language CLI arg)
+default_whisper_language: str | None = None
+
+LANGUAGE_OPTIONS: dict[str, str] = {
+    "auto": "Auto-detect",
+    "cantonese": "Cantonese (廣東話)",
+    "mandarin": "Mandarin (普通話)",
+    "english": "English",
+}
+
+# Map user-facing names to Whisper language codes
+_LANGUAGE_TO_WHISPER: dict[str, str] = {
+    "cantonese": "yue",
+    "mandarin": "zh",
+    "english": "en",
+}
 
 
 def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
@@ -186,6 +210,22 @@ def generate_response(
     return response
 
 
+def load_whisper_model(model_size: str = "base") -> None:
+    """Load faster-whisper on CPU with int8 quantization."""
+    global whisper_model
+    print(f"Loading Whisper model: {model_size}")
+    whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    print("Whisper model loaded and ready.")
+
+
+def transcribe_audio(file_path: str, language: str | None = None) -> str:
+    """Transcribe an audio file using faster-whisper. Synchronous — use via asyncio.to_thread."""
+    segments, _info = whisper_model.transcribe(
+        file_path, beam_size=5, language=language
+    )
+    return " ".join(segment.text.strip() for segment in segments)
+
+
 # ── Telegram handlers ──────────────────────────────────────────────
 
 
@@ -196,7 +236,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         "Hello! I'm a mental health counseling assistant. "
         "You can share what's on your mind and I'll do my best to help.\n\n"
+        "You can send text or voice messages — voice messages will be "
+        "transcribed and I'll respond to the transcript.\n\n"
+        "Supported voice languages: English, Cantonese (廣東話), "
+        "Mandarin (普通話).\n\n"
         "Commands:\n"
+        "/language - Set voice transcription language\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
     )
@@ -207,6 +252,34 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = update.effective_user.id
     user_histories.pop(user_id, None)
     await update.message.reply_text("Conversation history cleared. Let's start fresh.")
+
+
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /language command — set voice transcription language."""
+    user_id = update.effective_user.id
+    args = context.args
+
+    if args:
+        choice = args[0].lower()
+        if choice not in LANGUAGE_OPTIONS:
+            valid = ", ".join(f"{k} ({v})" for k, v in LANGUAGE_OPTIONS.items())
+            await update.message.reply_text(
+                f"Unknown language: {choice}\n\nValid options: {valid}"
+            )
+            return
+        lang = None if choice == "auto" else _LANGUAGE_TO_WHISPER[choice]
+        user_languages[user_id] = lang
+        label = LANGUAGE_OPTIONS[choice]
+        await update.message.reply_text(f"Voice language set to: {label}")
+        return
+
+    # No argument — show current setting and options
+    current = user_languages.get(user_id, default_whisper_language)
+    current_label = LANGUAGE_OPTIONS.get(current or "auto", "Auto-detect")
+    lines = [f"Current voice language: {current_label}\n", "Usage: /language <code>\n"]
+    for code, label in LANGUAGE_OPTIONS.items():
+        lines.append(f"  /language {code}  —  {label}")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -236,6 +309,70 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(response)
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle incoming voice messages — transcribe and generate a counselor response."""
+    voice = update.message.voice
+    if voice.duration > 120:
+        await update.message.reply_text(
+            "Sorry, I can only process voice messages up to 2 minutes long."
+        )
+        return
+
+    user_id = update.effective_user.id
+    tmp_path = None
+    try:
+        # Download voice OGG to a temp file
+        voice_file = await context.bot.get_file(voice.file_id)
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await voice_file.download_to_drive(tmp_path)
+
+        # Transcribe on CPU in a worker thread
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING
+        )
+        lang = user_languages.get(user_id, default_whisper_language)
+        transcript = await asyncio.to_thread(transcribe_audio, tmp_path, lang)
+
+        if not transcript or not transcript.strip():
+            await update.message.reply_text(
+                "I couldn't make out any words in that voice message. "
+                "Could you try again or type your message instead?"
+            )
+            return
+
+        history = user_histories.get(user_id, [])
+
+        # Send transcript immediately while generating LLM response concurrently
+        async def generate_and_reply() -> str:
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id, action=ChatAction.TYPING
+            )
+            resp = await asyncio.to_thread(generate_response, transcript, history)
+            if not resp or not resp.strip():
+                resp = (
+                    "I'm not sure how to respond to that. "
+                    "Could you tell me more about what's on your mind?"
+                )
+            await update.message.reply_text(resp)
+            return resp
+
+        transcript_msg = f'I heard:\n"{transcript}"'
+        _, response = await asyncio.gather(
+            update.message.reply_text(transcript_msg),
+            generate_and_reply(),
+        )
+
+        history.append((transcript, response))
+        if len(history) > HISTORY_LIMIT:
+            history.pop(0)
+        user_histories[user_id] = history
+
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
@@ -255,6 +392,18 @@ def main() -> None:
         default="Qwen/Qwen2.5-7B-Instruct",
         help="Base model name (default: Qwen/Qwen2.5-7B-Instruct)",
     )
+    parser.add_argument(
+        "--whisper_model",
+        type=str,
+        default="base",
+        help="Whisper model size for voice transcription (default: base)",
+    )
+    parser.add_argument(
+        "--whisper_language",
+        type=str,
+        default=None,
+        help="Force whisper language code, e.g. 'yue' for Cantonese (default: auto-detect)",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -262,6 +411,10 @@ def main() -> None:
         raise SystemExit("Set the TELEGRAM_BOT_TOKEN environment variable.")
 
     load_model_and_tokenizer(args.model_path, args.base_model)
+    load_whisper_model(args.whisper_model)
+
+    global default_whisper_language
+    default_whisper_language = args.whisper_language
 
     # Configure proxy if HTTPS_PROXY is set (e.g. CSE CUHK HPC cluster)
     builder = Application.builder().token(token)
@@ -272,7 +425,9 @@ def main() -> None:
     app = builder.build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("clear", clear_command))
+    app.add_handler(CommandHandler("language", language_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     logger.info("Bot started — polling for updates.")
     app.run_polling()

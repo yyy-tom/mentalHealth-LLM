@@ -103,7 +103,8 @@ echo "========================================"
 
 python scripts/telegram_bot.py \
     --model_path "$MODEL_PATH" \
-    --base_model "$BASE_MODEL"
+    --base_model "$BASE_MODEL" \
+    --whisper_model large-v3
 
 echo "========================================"
 echo "Bot stopped at: $(date)"
