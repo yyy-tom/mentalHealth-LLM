@@ -104,6 +104,14 @@ export CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((NUM_GPUS - 1)))
 export NCCL_DEBUG=WARN
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+# ---------- Kaggle credentials ----------
+if [ ! -f "$HOME/.kaggle/kaggle.json" ]; then
+    echo "Setting up Kaggle credentials..."
+    mkdir -p "$HOME/.kaggle"
+    echo '{"username":"yuyanyuk","key":"b2732b941a0d12912406a92478d7f3c2"}' > "$HOME/.kaggle/kaggle.json"
+    chmod 600 "$HOME/.kaggle/kaggle.json"
+fi
+
 # ============================================================
 # Step 1: HuggingFace Login (Llama is a gated model)
 # ============================================================

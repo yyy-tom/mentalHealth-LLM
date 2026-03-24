@@ -24,9 +24,9 @@ from pathlib import Path
 import os
 import sys
 
-# Get the project root directory (parent of scripts/)
+# Get the project root directory (parent of scripts/data/)
 SCRIPT_DIR = Path(__file__).parent.absolute()
-PROJECT_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
 
 
 def combine_all_datasets(dataset_dirs, output_dir, exclude_chinese=False):
