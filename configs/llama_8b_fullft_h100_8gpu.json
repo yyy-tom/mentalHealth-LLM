@@ -1,0 +1,55 @@
+{
+  "_comment": "Llama-3.1-8B FULL fine-tune on 8x H100 80GB — DDP, no LoRA, no quantization",
+
+  "model_name": "meta-llama/Llama-3.1-8B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/llama-3.1-8b-mental-health-fullft-8gpu",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 2,
+  "num_epochs": 3,
+  "learning_rate": 2e-5,
+  "use_wandb": false,
+
+  "max_length": 1024,
+  "gradient_accumulation_steps": 8,
+  "eval_batch_size": 2,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "logging_steps": 25,
+  "eval_steps": 500,
+  "save_steps": 1000,
+  "save_total_limit": 3,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+
+  "ddp_find_unused_parameters": false,
+  "ddp_broadcast_buffers": false,
+  "ddp_bucket_cap_mb": 25,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "8x NVIDIA H100 80GB — full fine-tune, no quantization",
+    "Effective batch size: 8 GPUs x 2 batch x 8 accum = 128",
+    "bf16 everywhere; gradient checkpointing ON",
+    "3 full epochs over 148K samples for best quality",
+    "REQUIRES: huggingface-cli login (Llama is a gated model)",
+    "Launch: torchrun --nproc_per_node=8 scripts/train_qwen_fullft.py --config configs/llama_8b_fullft_h100_8gpu.json"
+  ]
+}

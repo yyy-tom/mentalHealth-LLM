@@ -261,10 +261,13 @@ def process_psydial_data(
     
     # Save a sample for inspection
     sample_path = Path("samples") / "psydial_sample_data.json"
-    with open(sample_path, 'w', encoding='utf-8') as f:
-        json.dump(train_examples[:3], f, indent=2, ensure_ascii=False)
-    
-    print(f"Sample data saved to {sample_path}")
+    try:
+        sample_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(sample_path, 'w', encoding='utf-8') as f:
+            json.dump(train_examples[:3], f, indent=2, ensure_ascii=False)
+        print(f"Sample data saved to {sample_path}")
+    except OSError as e:
+        print(f"Warning: Could not save sample data: {e}")
 
 
 def main():

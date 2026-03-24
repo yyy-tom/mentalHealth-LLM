@@ -1,0 +1,57 @@
+{
+  "_comment": "Gemma-2-9B-it FULL fine-tune on 1x A100 80GB — memory-tight, optimized for ~6 hour completion",
+
+  "model_name": "google/gemma-2-9b-it",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/gemma2-9b-mental-health-fullft-a100",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 2,
+  "num_epochs": 1,
+  "max_steps": 4500,
+  "learning_rate": 1e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 8,
+  "eval_batch_size": 2,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1500,
+  "save_steps": 2000,
+  "save_total_limit": 2,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": false,
+  "early_stopping": false,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "1x NVIDIA A100 80GB SXM",
+    "Gemma-2-9B has ~9B params — larger than Qwen (7.6B) and Llama (8B)",
+    "Memory is TIGHT: model+optimizer ~72GB in bf16, leaves ~8GB for activations",
+    "batch_size=2 is the safe maximum with gradient checkpointing",
+    "Lower LR (1e-5) — Gemma 2 benefits from conservative learning rate",
+    "Effective batch size: 1 GPU x 2 batch x 8 accum = 16",
+    "Full 1 epoch = ~9,264 steps (148K / 16) ≈ ~10 hours on A100",
+    "max_steps=4500 caps training at ~6 hours",
+    "REQUIRES: huggingface-cli login (Gemma is a gated model)",
+    "If OOM: reduce max_length to 384 or use LoRA config instead",
+    "Launch: python scripts/train_qwen_fullft.py --config configs/gemma2_9b_fullft_a100_1gpu_fast.json"
+  ]
+}

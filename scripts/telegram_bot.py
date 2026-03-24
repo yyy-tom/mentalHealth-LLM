@@ -2,12 +2,17 @@
 """
 Telegram bot interface for the fine-tuned Qwen2.5 mental health counselor model.
 
+Supports skill-based routing: each user message is classified by the SkillRouter
+and the corresponding LoRA adapter + system prompt is activated before generation.
+
 Usage:
     TELEGRAM_BOT_TOKEN="xxx" python3 scripts/telegram_bot.py \
-        --model_path models/qwen2.5-7b-mental-health-fullft-a100
+        --model_path models/qwen2.5-7b-mental-health-fullft-a100 \
+        --adapters_dir adapters
 """
 
 import os
+import sys
 from pathlib import Path
 
 _LARGE_DISK_PATH = Path(os.environ.get("HF_LARGE_DISK_PATH", "/research/d7/fyp25/yyyu2"))
@@ -54,6 +59,13 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 from faster_whisper import WhisperModel
 
+# Add project root for mental_health_llm imports
+_SCRIPT_DIR = Path(__file__).parent.absolute()
+_PROJECT_ROOT = _SCRIPT_DIR.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
+
+from mental_health_llm.skill_router import SkillRouter
+
 _TF_MAJOR = int(transformers.__version__.split(".")[0])
 _DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
 from telegram import Update
@@ -78,6 +90,8 @@ HISTORY_LIMIT = 6
 model = None
 tokenizer = None
 whisper_model = None
+skill_router: SkillRouter | None = None
+loaded_skills: list[str] = []
 
 # Per-user conversation history: {user_id: [(user_msg, bot_msg), ...]}
 user_histories: dict[int, list[tuple[str, str]]] = {}
@@ -103,12 +117,12 @@ _LANGUAGE_TO_WHISPER: dict[str, str] = {
 }
 
 
-def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
-    """Load the fine-tuned model with 4-bit quantization for 11GB GPUs."""
-    global model, tokenizer
+def load_model_and_tokenizer(model_path: str, adapters_dir: str | None = None) -> None:
+    """Load the base model and all available skill LoRA adapters."""
+    global model, tokenizer, loaded_skills
 
-    print(f"Loading base model: {base_model}")
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+    print(f"Loading base model: {model_path}")
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -139,39 +153,70 @@ def load_model_and_tokenizer(model_path: str, base_model: str) -> None:
             bnb_4bit_compute_dtype=model_dtype,
         )
 
-    model = AutoModelForCausalLM.from_pretrained(base_model, **load_kwargs)
+    model = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs)
 
-    try:
-        model = PeftModel.from_pretrained(model, model_path)
-        print(f"Loaded LoRA weights from {model_path}")
-    except Exception as e:
-        print(f"No LoRA weights found at {model_path}, using base model. Error: {e}")
+    # Load skill adapters
+    if adapters_dir:
+        adapters_path = Path(adapters_dir)
+        if not adapters_path.is_absolute():
+            adapters_path = _PROJECT_ROOT / adapters_path
+        _load_adapters(str(adapters_path))
 
-    # Note: model.eval() sets the model to inference mode
     model.training = False
-    print("Model loaded and ready.")
+    if loaded_skills:
+        print(f"Model loaded with {len(loaded_skills)} adapters: {', '.join(loaded_skills)}")
+    else:
+        print("Model loaded (no adapters).")
+
+
+SKILL_NAMES = [
+    "crisis-intervention",
+    "general-support",
+    "cbt-therapy",
+    "empathetic-listening",
+    "psychoeducation",
+    "professional-counseling",
+]
+
+
+def _load_adapters(adapters_dir: str) -> None:
+    """Load all available skill LoRA adapters from a directory."""
+    global model, loaded_skills
+    first_adapter = True
+
+    for skill_name in SKILL_NAMES:
+        adapter_path = os.path.join(adapters_dir, skill_name)
+        has_adapter = (
+            os.path.exists(os.path.join(adapter_path, "adapter_config.json"))
+            or os.path.exists(os.path.join(adapter_path, "adapter_model.safetensors"))
+            or os.path.exists(os.path.join(adapter_path, "adapter_model.bin"))
+        )
+        if not has_adapter:
+            print(f"  Adapter not found: {adapter_path} — skipping")
+            continue
+
+        try:
+            if first_adapter:
+                model = PeftModel.from_pretrained(
+                    model, adapter_path, adapter_name=skill_name
+                )
+                first_adapter = False
+            else:
+                model.load_adapter(adapter_path, adapter_name=skill_name)
+            loaded_skills.append(skill_name)
+            print(f"  Loaded adapter: {skill_name}")
+        except Exception as e:
+            print(f"  Failed to load {skill_name}: {e}")
 
 
 def generate_response(
     question: str,
+    system_prompt: str,
     history: list[tuple[str, str]] | None = None,
     max_length: int = 1024,
 ) -> str:
-    """Generate a counseling response for the given question."""
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a compassionate and professional mental health counselor. "
-                "Please provide helpful, empathetic, and evidence-based advice. "
-                "Your responses should:\n"
-                "1. Acknowledge the person's feelings\n"
-                "2. Offer practical advice\n"
-                "3. Suggest professional resources if appropriate\n"
-                "4. Maintain a warm, non-judgmental tone"
-            ),
-        }
-    ]
+    """Generate a counseling response using the given system prompt."""
+    messages = [{"role": "system", "content": system_prompt}]
 
     if history:
         for user_turn, counselor_turn in history:
@@ -198,16 +243,55 @@ def generate_response(
             top_k=50,
             repetition_penalty=1.1,
             pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            no_repeat_ngram_size=3,
         )
 
     new_tokens = outputs[0][input_length:]
     response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+    # Clean up — stop at common continuation patterns
+    stop_patterns = [
+        "\n\nQuestion:", "\n\nHuman:", "\n\nUser:",
+        "[End]", "\n\nBased on", "\n\nThis response",
+    ]
+    for pattern in stop_patterns:
+        if pattern in response:
+            response = response.split(pattern)[0].strip()
+            break
 
     if len(response) > 2000:
         sentences = response.split(". ")
         response = ". ".join(sentences[:10]) + "."
 
     return response
+
+
+def route_and_generate(
+    question: str,
+    history: list[tuple[str, str]] | None = None,
+) -> tuple[str, str]:
+    """Route to the best skill, activate its adapter, and generate a response.
+
+    Returns (response_text, skill_name).
+    """
+    skill_name = skill_router.route(question)
+
+    # Activate adapter if available
+    if loaded_skills:
+        if skill_name in loaded_skills:
+            model.set_adapter(skill_name)
+        else:
+            fallback = (
+                "general-support"
+                if "general-support" in loaded_skills
+                else loaded_skills[0]
+            )
+            model.set_adapter(fallback)
+
+    system_prompt = skill_router.get_system_prompt(skill_name)
+    response = generate_response(question, system_prompt, history)
+    return response, skill_name
 
 
 def load_whisper_model(model_size: str = "base") -> None:
@@ -283,7 +367,7 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle incoming text messages — generate a counselor response."""
+    """Handle incoming text messages — route to skill and generate response."""
     user_id = update.effective_user.id
     user_text = update.message.text
 
@@ -293,7 +377,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         chat_id=update.effective_chat.id, action=ChatAction.TYPING
     )
 
-    response = generate_response(user_text, history)
+    response, skill_name = await asyncio.to_thread(
+        route_and_generate, user_text, history
+    )
+    logger.info("User %s routed to [%s]", user_id, skill_name)
 
     if not response or not response.strip():
         response = (
@@ -348,7 +435,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await context.bot.send_chat_action(
                 chat_id=update.effective_chat.id, action=ChatAction.TYPING
             )
-            resp = await asyncio.to_thread(generate_response, transcript, history)
+            resp, skill_name = await asyncio.to_thread(
+                route_and_generate, transcript, history
+            )
+            logger.info("User %s (voice) routed to [%s]", user_id, skill_name)
             if not resp or not resp.strip():
                 resp = (
                     "I'm not sure how to respond to that. "
@@ -384,13 +474,13 @@ def main() -> None:
         "--model_path",
         type=str,
         required=True,
-        help="Path to the fine-tuned model (LoRA weights directory)",
+        help="Path to the fine-tuned base model",
     )
     parser.add_argument(
-        "--base_model",
+        "--adapters_dir",
         type=str,
-        default="Qwen/Qwen2.5-7B-Instruct",
-        help="Base model name (default: Qwen/Qwen2.5-7B-Instruct)",
+        default=None,
+        help="Directory containing skill adapter subdirectories (default: None)",
     )
     parser.add_argument(
         "--whisper_model",
@@ -410,7 +500,11 @@ def main() -> None:
     if not token:
         raise SystemExit("Set the TELEGRAM_BOT_TOKEN environment variable.")
 
-    load_model_and_tokenizer(args.model_path, args.base_model)
+    global skill_router
+    skill_router = SkillRouter()
+    print(f"Skill router loaded with {len(skill_router.list_skills())} skills")
+
+    load_model_and_tokenizer(args.model_path, args.adapters_dir)
     load_whisper_model(args.whisper_model)
 
     global default_whisper_language

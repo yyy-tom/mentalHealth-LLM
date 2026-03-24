@@ -1,0 +1,54 @@
+{
+  "_comment": "Llama-3.1-8B FULL fine-tune on 1x A100 80GB — optimized for ~5 hour completion",
+
+  "model_name": "meta-llama/Llama-3.1-8B-Instruct",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/llama-3.1-8b-mental-health-fullft-a100",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 4,
+  "num_epochs": 1,
+  "max_steps": 4500,
+  "learning_rate": 2e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 4,
+  "eval_batch_size": 4,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1500,
+  "save_steps": 2000,
+  "save_total_limit": 2,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": false,
+  "early_stopping": false,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "1x NVIDIA A100 80GB SXM",
+    "Llama-3.1-8B has ~8B params (slightly larger than Qwen 7.6B)",
+    "Model+optimizer in bf16 ~70GB — batch_size=4 is safe with gradient checkpointing",
+    "Full 1 epoch = ~12,352 steps (148K / (4 * 3 accum)) ≈ ~10 hours on A100",
+    "max_steps=4500 caps training at ~5 hours",
+    "Lower LR (2e-5) than Qwen config — Llama tends to prefer smaller LR for stability",
+    "REQUIRES: huggingface-cli login (Llama is a gated model)",
+    "Launch: python scripts/train_qwen_fullft.py --config configs/llama_8b_fullft_a100_1gpu_fast.json"
+  ]
+}

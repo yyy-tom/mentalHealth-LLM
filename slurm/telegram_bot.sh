@@ -88,7 +88,7 @@ echo ""
 
 # ---------- Model path ----------
 MODEL_PATH="models/qwen2.5-7b-mental-health-fullft-a100"
-BASE_MODEL="$MODEL_PATH"
+ADAPTERS_DIR="adapters"
 
 if [ ! -d "$MODEL_PATH" ]; then
     echo "ERROR: Model not found at $MODEL_PATH"
@@ -98,12 +98,13 @@ fi
 # ---------- Run bot ----------
 echo "Starting Telegram bot..."
 echo "Model: $MODEL_PATH"
+echo "Adapters: $ADAPTERS_DIR"
 echo "To stop: scancel $SLURM_JOB_ID"
 echo "========================================"
 
 python scripts/telegram_bot.py \
     --model_path "$MODEL_PATH" \
-    --base_model "$BASE_MODEL" \
+    --adapters_dir "$ADAPTERS_DIR" \
     --whisper_model large-v3
 
 echo "========================================"

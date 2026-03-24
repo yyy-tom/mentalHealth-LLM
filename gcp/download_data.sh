@@ -131,8 +131,7 @@ done
 
 python3 scripts/data/combine_all_datasets.py \
     --datasets "/workspace/LLM/datasets/*" \
-    --output_dir "/workspace/LLM/datasets/all_mental_health_combined" \
-    --include_chinese
+    --output_dir "/workspace/LLM/datasets/all_mental_health_combined"
 
 echo ""
 echo "========================================"
