@@ -277,25 +277,24 @@ class FullFineTuneTrainer:
             dataset_path + "_tokenized_llama_fullft",
             dataset_path + "_tokenized_llama_qlora",
         ]
+        logger.info(f"Searching for pre-tokenized dataset (base: {dataset_path})")
         for candidate in candidates:
-            if os.path.exists(candidate):
+            exists = os.path.exists(candidate)
+            logger.info(f"  {candidate} -> {'FOUND' if exists else 'not found'}")
+            if exists and tokenized_dataset is None:
                 try:
-                    logger.info(f"Loading pre-tokenized dataset: {candidate}")
                     tokenized_dataset = load_from_disk(candidate)
-                    logger.info("Pre-tokenized dataset loaded.")
-                    break
+                    logger.info(f"Pre-tokenized dataset loaded from {candidate}")
                 except Exception as e:
                     logger.warning(f"Failed to load pre-tokenized dataset: {e}")
 
         if tokenized_dataset is None:
-            logger.info("Tokenizing dataset (this may take a few minutes)...")
-            # Use num_proc=1 inside torchrun to avoid CUDA fork errors
+            logger.info("Tokenizing dataset inline (no multiprocessing)...")
             tokenized_dataset = dataset.map(
                 self.tokenize_function,
                 batched=True,
                 remove_columns=dataset["train"].column_names,
                 load_from_cache_file=True,
-                num_proc=1,
             )
             try:
                 tokenized_dataset.save_to_disk(tokenized_path)
