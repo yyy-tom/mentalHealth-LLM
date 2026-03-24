@@ -267,24 +267,35 @@ class FullFineTuneTrainer:
 
         tokenized_path = dataset_path + "_tokenized"
 
-        # Try pre-tokenized first
+        # Try pre-tokenized first — check multiple suffixes
+        # (pipelines may use model-specific suffixes like _tokenized_gemma2)
         tokenized_dataset = None
-        if os.path.exists(tokenized_path):
-            try:
-                logger.info(f"Loading pre-tokenized dataset: {tokenized_path}")
-                tokenized_dataset = load_from_disk(tokenized_path)
-                logger.info("Pre-tokenized dataset loaded.")
-            except Exception as e:
-                logger.warning(f"Failed to load pre-tokenized dataset: {e}")
+        candidates = [
+            tokenized_path,
+            dataset_path + "_tokenized_gemma2",
+            dataset_path + "_tokenized_llama",
+            dataset_path + "_tokenized_llama_fullft",
+            dataset_path + "_tokenized_llama_qlora",
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                try:
+                    logger.info(f"Loading pre-tokenized dataset: {candidate}")
+                    tokenized_dataset = load_from_disk(candidate)
+                    logger.info("Pre-tokenized dataset loaded.")
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to load pre-tokenized dataset: {e}")
 
         if tokenized_dataset is None:
             logger.info("Tokenizing dataset (this may take a few minutes)...")
+            # Use num_proc=1 inside torchrun to avoid CUDA fork errors
             tokenized_dataset = dataset.map(
                 self.tokenize_function,
                 batched=True,
                 remove_columns=dataset["train"].column_names,
                 load_from_cache_file=True,
-                num_proc=4,
+                num_proc=1,
             )
             try:
                 tokenized_dataset.save_to_disk(tokenized_path)

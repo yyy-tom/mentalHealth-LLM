@@ -302,8 +302,8 @@ if [ "$SKIP_TOKENIZE" = "0" ]; then
     if [ -d "$TOKENIZED_PATH" ]; then
         echo "Pre-tokenized dataset already exists at $TOKENIZED_PATH, skipping."
     elif [ -d "$DATASET_PATH" ]; then
-        # Pretokenize using the Llama config
-        echo "y" | python3 scripts/pretokenize_dataset.py \
+        # Hide GPU during tokenization to prevent CUDA fork errors
+        echo "y" | CUDA_VISIBLE_DEVICES="" python3 scripts/pretokenize_dataset.py \
             --config "$CONFIG" \
             --output_suffix "_tokenized_llama"
     else
