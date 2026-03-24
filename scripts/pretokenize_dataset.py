@@ -10,7 +10,18 @@ Usage:
 import argparse
 import json
 import os
+import multiprocessing
 from pathlib import Path
+
+# Must set start method before any CUDA initialization to avoid
+# "Cannot re-initialize CUDA in forked subprocess" errors
+if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn", force=True)
+
+# Avoid importing torch at module level — it initializes CUDA
+# and breaks forked multiprocessing in dataset.map(num_proc>1)
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 from datasets import load_from_disk
 from transformers import AutoTokenizer
 
