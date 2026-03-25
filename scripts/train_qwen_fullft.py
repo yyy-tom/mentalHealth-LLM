@@ -267,17 +267,28 @@ class FullFineTuneTrainer:
 
         tokenized_path = dataset_path + "_tokenized"
 
-        # Try pre-tokenized first — check multiple suffixes
-        # (pipelines may use model-specific suffixes like _tokenized_gemma2)
-        tokenized_dataset = None
+        # Detect which model-specific tokenized dataset to use based on model name.
+        # Each model has a different tokenizer — NEVER reuse another model's tokens.
+        model_name = self.config["model_name"].lower()
+        if "gemma" in model_name:
+            model_suffix = "_tokenized_gemma2"
+        elif "llama" in model_name:
+            model_suffix = "_tokenized_llama"
+        elif "mistral" in model_name:
+            model_suffix = "_tokenized_mistral"
+        elif "qwen" in model_name:
+            model_suffix = "_tokenized"
+        else:
+            model_suffix = "_tokenized"
+
+        # Check model-specific path first, then generic fallback
         candidates = [
+            dataset_path + model_suffix,
             tokenized_path,
-            dataset_path + "_tokenized_gemma2",
-            dataset_path + "_tokenized_llama",
-            dataset_path + "_tokenized_llama_fullft",
-            dataset_path + "_tokenized_llama_qlora",
         ]
-        logger.info(f"Searching for pre-tokenized dataset (base: {dataset_path})")
+
+        tokenized_dataset = None
+        logger.info(f"Searching for pre-tokenized dataset (model: {self.config['model_name']})")
         for candidate in candidates:
             exists = os.path.exists(candidate)
             logger.info(f"  {candidate} -> {'FOUND' if exists else 'not found'}")

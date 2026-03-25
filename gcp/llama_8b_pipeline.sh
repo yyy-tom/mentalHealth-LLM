@@ -330,11 +330,16 @@ echo ""
 nvidia-smi
 echo ""
 
-torchrun \
-    --nproc_per_node="$NUM_GPUS" \
-    --master_port=29500 \
-    scripts/train_qwen_fullft.py \
-    --config "$CONFIG"
+if [ "$NUM_GPUS" -gt 1 ]; then
+    torchrun \
+        --nproc_per_node="$NUM_GPUS" \
+        --master_port=29500 \
+        scripts/train_qwen_fullft.py \
+        --config "$CONFIG"
+else
+    python3 scripts/train_qwen_fullft.py \
+        --config "$CONFIG"
+fi
 
 echo ""
 echo "============================================================"

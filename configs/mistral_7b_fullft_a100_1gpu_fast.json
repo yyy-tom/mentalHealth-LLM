@@ -1,0 +1,55 @@
+{
+  "_comment": "Mistral-7B-Instruct-v0.3 FULL fine-tune on 1x A100 80GB",
+
+  "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
+  "dataset_path": "datasets/all_mental_health_combined",
+  "output_dir": "models/mistral-7b-mental-health-fullft-a100",
+
+  "full_finetune": true,
+  "use_4bit": false,
+
+  "batch_size": 6,
+  "num_epochs": 1,
+  "max_steps": 4500,
+  "learning_rate": 2e-5,
+  "use_wandb": false,
+
+  "max_length": 512,
+  "gradient_accumulation_steps": 4,
+  "eval_batch_size": 4,
+
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "logging_steps": 50,
+  "eval_steps": 1500,
+  "save_steps": 4500,
+  "save_total_limit": 1,
+
+  "fp16": false,
+  "bf16": true,
+  "seed": 42,
+
+  "gradient_checkpointing": true,
+  "optim": "adamw_torch_fused",
+  "lr_scheduler_type": "cosine",
+
+  "save_strategy": "steps",
+  "eval_strategy": "steps",
+  "load_best_model_at_end": false,
+  "early_stopping": false,
+
+  "dataloader_num_workers": 4,
+  "dataloader_pin_memory": true,
+
+  "_hardware_notes": [
+    "1x NVIDIA A100 80GB SXM",
+    "Mistral-7B has ~7.3B params — similar to Qwen 2.5 (7.6B), lighter than Gemma 2 (9B)",
+    "NOT gated — no HuggingFace login required",
+    "batch_size=6 fits comfortably (same as Qwen A100 config)",
+    "save_steps=4500 saves only at end to avoid disk space issues",
+    "save_total_limit=1 to save disk",
+    "Effective batch size: 6 x 4 accum = 24",
+    "max_steps=4500 caps training at ~5 hours",
+    "Launch: python scripts/train_qwen_fullft.py --config configs/mistral_7b_fullft_a100_1gpu_fast.json"
+  ]
+}
