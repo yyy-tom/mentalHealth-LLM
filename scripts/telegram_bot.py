@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Telegram bot interface for the fine-tuned Qwen2.5 mental health counselor model.
+Telegram bot for mental health counseling with multi-model support.
 
-Supports skill-based routing: each user message is classified by the SkillRouter
-and the corresponding LoRA adapter + system prompt is activated before generation.
+Supports 6 model variants (3 fine-tuned + 3 base) with per-user model
+selection via /model command. Skill-based routing selects system prompts;
+LoRA adapters are activated only for Qwen fine-tuned models.
 
 Usage:
     TELEGRAM_BOT_TOKEN="xxx" python3 scripts/telegram_bot.py \
-        --model_path models/qwen2.5-7b-mental-health-fullft-a100 \
-        --adapters_dir adapters
+        --models qwen-ft gemma-ft mistral-ft \
+        --adapters-dir adapters \
+        --preload
 """
 
 import os
@@ -52,6 +54,7 @@ import argparse
 import asyncio
 import logging
 import tempfile
+import threading
 
 import torch
 import transformers
@@ -68,10 +71,11 @@ from mental_health_llm.skill_router import SkillRouter
 
 _TF_MAJOR = int(transformers.__version__.split(".")[0])
 _DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -86,88 +90,34 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 6
 
-# Global model/tokenizer — loaded once at startup
-model = None
-tokenizer = None
-whisper_model = None
-skill_router: SkillRouter | None = None
-loaded_skills: list[str] = []
+# ── Model Registry ────────────────────────────────────────────────
 
-# Per-user conversation history: {user_id: [(user_msg, bot_msg), ...]}
-user_histories: dict[int, list[tuple[str, str]]] = {}
-
-# Per-user voice language preference: {user_id: language_code or None}
-user_languages: dict[int, str | None] = {}
-
-# Server-wide default language (set via --whisper_language CLI arg)
-default_whisper_language: str | None = None
-
-LANGUAGE_OPTIONS: dict[str, str] = {
-    "auto": "Auto-detect",
-    "cantonese": "Cantonese (廣東話)",
-    "mandarin": "Mandarin (普通話)",
-    "english": "English",
+MODEL_REGISTRY: dict[str, dict] = {
+    "qwen-ft": {
+        "name": "Qwen 2.5 7B (fine-tuned)",
+        "path": "models/qwen2.5-7b-mental-health-fullft-a100",
+    },
+    "qwen-base": {
+        "name": "Qwen 2.5 7B (base)",
+        "path": "Qwen/Qwen2.5-7B-Instruct",
+    },
+    "gemma-ft": {
+        "name": "Gemma 2 9B (fine-tuned)",
+        "path": "models/gemma2-9b-mental-health-fullft-a100",
+    },
+    "gemma-base": {
+        "name": "Gemma 2 9B (base)",
+        "path": "google/gemma-2-9b-it",
+    },
+    "mistral-ft": {
+        "name": "Mistral 7B (fine-tuned)",
+        "path": "models/mistral-7b-mental-health-fullft-a100",
+    },
+    "mistral-base": {
+        "name": "Mistral 7B (base)",
+        "path": "mistralai/Mistral-7B-Instruct-v0.3",
+    },
 }
-
-# Map user-facing names to Whisper language codes
-_LANGUAGE_TO_WHISPER: dict[str, str] = {
-    "cantonese": "yue",
-    "mandarin": "zh",
-    "english": "en",
-}
-
-
-def load_model_and_tokenizer(model_path: str, adapters_dir: str | None = None) -> None:
-    """Load the base model and all available skill LoRA adapters."""
-    global model, tokenizer, loaded_skills
-
-    print(f"Loading base model: {model_path}")
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    cuda_available = torch.cuda.is_available()
-    model_dtype = torch.float16 if cuda_available else torch.float32
-
-    # Check available VRAM — use 4-bit if less than 16GB
-    use_4bit = False
-    if cuda_available:
-        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        print(f"GPU VRAM: {vram_gb:.1f} GB")
-        if vram_gb < 16:
-            use_4bit = True
-            print("Using 4-bit quantization (VRAM < 16GB)")
-
-    load_kwargs = {
-        "trust_remote_code": True,
-        "device_map": {"": 0} if cuda_available else "cpu",
-        "low_cpu_mem_usage": True,
-        _DTYPE_KEY: model_dtype,
-    }
-
-    if use_4bit:
-        load_kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=model_dtype,
-        )
-
-    model = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs)
-
-    # Load skill adapters
-    if adapters_dir:
-        adapters_path = Path(adapters_dir)
-        if not adapters_path.is_absolute():
-            adapters_path = _PROJECT_ROOT / adapters_path
-        _load_adapters(str(adapters_path))
-
-    model.training = False
-    if loaded_skills:
-        print(f"Model loaded with {len(loaded_skills)} adapters: {', '.join(loaded_skills)}")
-    else:
-        print("Model loaded (no adapters).")
-
 
 SKILL_NAMES = [
     "crisis-intervention",
@@ -179,9 +129,131 @@ SKILL_NAMES = [
 ]
 
 
-def _load_adapters(adapters_dir: str) -> None:
-    """Load all available skill LoRA adapters from a directory."""
-    global model, loaded_skills
+# ── ModelManager ──────────────────────────────────────────────────
+
+
+class ModelManager:
+    """Manages multiple models across GPUs with preload or on-demand loading."""
+
+    def __init__(
+        self,
+        model_keys: list[str],
+        preload: bool = False,
+        adapters_dir: str | None = None,
+    ):
+        self._models: dict[str, tuple] = {}  # key -> (model, tokenizer, loaded_skills)
+        self._lock = threading.Lock()
+        self._model_keys = model_keys
+        self._adapters_dir = adapters_dir
+
+        gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        print(f"ModelManager: {len(model_keys)} models requested, {gpu_count} GPUs available")
+
+        if preload:
+            for i, key in enumerate(model_keys):
+                gpu_id = i % gpu_count if gpu_count > 0 else None
+                self._load_model(key, gpu_id)
+
+    def get(self, model_key: str) -> tuple:
+        """Return (model, tokenizer, loaded_skills) for the given key. Load if needed."""
+        if model_key in self._models:
+            return self._models[model_key]
+
+        with self._lock:
+            # Double-check after acquiring lock
+            if model_key in self._models:
+                return self._models[model_key]
+
+            gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+
+            # On-demand: if only 1 GPU, unload all others first
+            if gpu_count <= 1 and self._models:
+                for old_key in list(self._models.keys()):
+                    print(f"Unloading {old_key} to free GPU memory...")
+                    del self._models[old_key]
+                torch.cuda.empty_cache()
+
+            gpu_id = 0 if gpu_count > 0 else None
+            self._load_model(model_key, gpu_id)
+            return self._models[model_key]
+
+    def _load_model(self, model_key: str, gpu_id: int | None) -> None:
+        """Load one model onto a specific GPU in 4-bit."""
+        info = MODEL_REGISTRY[model_key]
+        model_path = info["path"]
+
+        # Resolve relative paths against project root
+        if not model_path.startswith("/") and "/" not in model_path.split("/")[0].split("."):
+            candidate = _PROJECT_ROOT / model_path
+            if candidate.exists():
+                model_path = str(candidate)
+
+        print(f"Loading {model_key} ({info['name']}) from {model_path}"
+              + (f" -> GPU {gpu_id}" if gpu_id is not None else " -> CPU"))
+
+        tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+
+        cuda_available = gpu_id is not None
+        model_dtype = torch.float16 if cuda_available else torch.float32
+
+        load_kwargs = {
+            "trust_remote_code": True,
+            "device_map": {"": gpu_id} if cuda_available else "cpu",
+            "low_cpu_mem_usage": True,
+            _DTYPE_KEY: model_dtype,
+        }
+
+        if cuda_available:
+            vram_gb = torch.cuda.get_device_properties(gpu_id).total_memory / (1024**3)
+            if vram_gb < 16:
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=model_dtype,
+                )
+                print(f"  Using 4-bit quantization (GPU {gpu_id} VRAM: {vram_gb:.1f} GB)")
+
+        mdl = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs)
+
+        # Load LoRA adapters only for qwen-ft
+        loaded_skills: list[str] = []
+        if model_key == "qwen-ft" and self._adapters_dir:
+            adapters_path = Path(self._adapters_dir)
+            if not adapters_path.is_absolute():
+                adapters_path = _PROJECT_ROOT / adapters_path
+            mdl, loaded_skills = _load_adapters(mdl, str(adapters_path))
+
+        mdl.training = False
+
+        if loaded_skills:
+            print(f"  {model_key} loaded with {len(loaded_skills)} adapters: {', '.join(loaded_skills)}")
+        else:
+            print(f"  {model_key} loaded (no adapters).")
+
+        self._models[model_key] = (mdl, tok, loaded_skills)
+
+    def list_available(self) -> list[str]:
+        """Return the list of model keys this manager can serve."""
+        return list(self._model_keys)
+
+    def display_name(self, model_key: str) -> str:
+        """Return human-readable name for a model key."""
+        return MODEL_REGISTRY[model_key]["name"]
+
+    def is_loaded(self, model_key: str) -> bool:
+        """Check whether a model is already loaded in memory."""
+        return model_key in self._models
+
+
+def _load_adapters(mdl, adapters_dir: str) -> tuple:
+    """Load all available skill LoRA adapters from a directory.
+
+    Returns (model_with_adapters, list_of_loaded_skill_names).
+    """
+    loaded_skills: list[str] = []
     first_adapter = True
 
     for skill_name in SKILL_NAMES:
@@ -197,25 +269,60 @@ def _load_adapters(adapters_dir: str) -> None:
 
         try:
             if first_adapter:
-                model = PeftModel.from_pretrained(
-                    model, adapter_path, adapter_name=skill_name
+                mdl = PeftModel.from_pretrained(
+                    mdl, adapter_path, adapter_name=skill_name
                 )
                 first_adapter = False
             else:
-                model.load_adapter(adapter_path, adapter_name=skill_name)
+                mdl.load_adapter(adapter_path, adapter_name=skill_name)
             loaded_skills.append(skill_name)
             print(f"  Loaded adapter: {skill_name}")
         except Exception as e:
             print(f"  Failed to load {skill_name}: {e}")
 
+    return mdl, loaded_skills
+
+
+# ── Global state ──────────────────────────────────────────────────
+
+model_manager: ModelManager | None = None
+whisper_model = None
+skill_router: SkillRouter | None = None
+default_model_key: str = "qwen-ft"
+
+# Per-user state
+user_histories: dict[int, list[tuple[str, str]]] = {}
+user_models: dict[int, str] = {}
+user_languages: dict[int, str | None] = {}
+
+default_whisper_language: str | None = None
+
+LANGUAGE_OPTIONS: dict[str, str] = {
+    "auto": "Auto-detect",
+    "cantonese": "Cantonese (廣東話)",
+    "mandarin": "Mandarin (普通話)",
+    "english": "English",
+}
+
+_LANGUAGE_TO_WHISPER: dict[str, str] = {
+    "cantonese": "yue",
+    "mandarin": "zh",
+    "english": "en",
+}
+
+
+# ── Generation ────────────────────────────────────────────────────
+
 
 def generate_response(
     question: str,
     system_prompt: str,
+    mdl,
+    tok,
     history: list[tuple[str, str]] | None = None,
     max_length: int = 1024,
 ) -> str:
-    """Generate a counseling response using the given system prompt."""
+    """Generate a counseling response using the given system prompt and model."""
     messages = [{"role": "system", "content": system_prompt}]
 
     if history:
@@ -225,16 +332,16 @@ def generate_response(
 
     messages.append({"role": "user", "content": question})
 
-    prompt = tokenizer.apply_chat_template(
+    prompt = tok.apply_chat_template(
         messages, add_generation_prompt=True, tokenize=False
     )
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-    device = next(model.parameters()).device
+    inputs = tok(prompt, return_tensors="pt", truncation=True, max_length=2048)
+    device = next(mdl.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_length = inputs["input_ids"].shape[1]
 
     with torch.no_grad():
-        outputs = model.generate(
+        outputs = mdl.generate(
             **inputs,
             max_new_tokens=min(max_length, 1024),
             temperature=0.7,
@@ -242,15 +349,14 @@ def generate_response(
             top_p=0.9,
             top_k=50,
             repetition_penalty=1.1,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tok.eos_token_id,
+            eos_token_id=tok.eos_token_id,
             no_repeat_ngram_size=3,
         )
 
     new_tokens = outputs[0][input_length:]
-    response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    response = tok.decode(new_tokens, skip_special_tokens=True).strip()
 
-    # Clean up — stop at common continuation patterns
     stop_patterns = [
         "\n\nQuestion:", "\n\nHuman:", "\n\nUser:",
         "[End]", "\n\nBased on", "\n\nThis response",
@@ -269,29 +375,35 @@ def generate_response(
 
 def route_and_generate(
     question: str,
+    model_key: str,
     history: list[tuple[str, str]] | None = None,
 ) -> tuple[str, str]:
-    """Route to the best skill, activate its adapter, and generate a response.
+    """Route to the best skill, activate adapter if applicable, and generate.
 
     Returns (response_text, skill_name).
     """
     skill_name = skill_router.route(question)
 
-    # Activate adapter if available
+    mdl, tok, loaded_skills = model_manager.get(model_key)
+
+    # Activate LoRA adapter only for qwen-ft with loaded adapters
     if loaded_skills:
         if skill_name in loaded_skills:
-            model.set_adapter(skill_name)
+            mdl.set_adapter(skill_name)
         else:
             fallback = (
                 "general-support"
                 if "general-support" in loaded_skills
                 else loaded_skills[0]
             )
-            model.set_adapter(fallback)
+            mdl.set_adapter(fallback)
 
     system_prompt = skill_router.get_system_prompt(skill_name)
-    response = generate_response(question, system_prompt, history)
+    response = generate_response(question, system_prompt, mdl, tok, history)
     return response, skill_name
+
+
+# ── Whisper ───────────────────────────────────────────────────────
 
 
 def load_whisper_model(model_size: str = "base") -> None:
@@ -317,14 +429,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Handle /start command."""
     user_id = update.effective_user.id
     user_histories.pop(user_id, None)
+
+    current_key = user_models.get(user_id, default_model_key)
+    current_name = model_manager.display_name(current_key)
+
     await update.message.reply_text(
         "Hello! I'm a mental health counseling assistant. "
         "You can share what's on your mind and I'll do my best to help.\n\n"
+        f"Current model: {current_name}\n\n"
         "You can send text or voice messages — voice messages will be "
         "transcribed and I'll respond to the transcript.\n\n"
         "Supported voice languages: English, Cantonese (廣東話), "
         "Mandarin (普通話).\n\n"
         "Commands:\n"
+        "/model - Switch between AI models\n"
         "/language - Set voice transcription language\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
@@ -336,6 +454,62 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = update.effective_user.id
     user_histories.pop(user_id, None)
     await update.message.reply_text("Conversation history cleared. Let's start fresh.")
+
+
+async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /model command — show inline keyboard for model selection."""
+    user_id = update.effective_user.id
+    current_key = user_models.get(user_id, default_model_key)
+    available = model_manager.list_available()
+
+    buttons = []
+    for key in available:
+        name = model_manager.display_name(key)
+        label = f"{'✅ ' if key == current_key else ''}{name}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"model:{key}")])
+
+    await update.message.reply_text(
+        "Select a model:", reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle inline keyboard button press for model selection."""
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data.startswith("model:"):
+        return
+
+    model_key = query.data.removeprefix("model:")
+    user_id = query.from_user.id
+    current_key = user_models.get(user_id, default_model_key)
+
+    if model_key == current_key:
+        await query.edit_message_text(
+            f"Already using {model_manager.display_name(model_key)}."
+        )
+        return
+
+    if model_key not in model_manager.list_available():
+        await query.edit_message_text("That model is not available.")
+        return
+
+    # Show loading message if model isn't preloaded
+    if not model_manager.is_loaded(model_key):
+        await query.edit_message_text(
+            f"Loading {model_manager.display_name(model_key)}... this may take 20-30s."
+        )
+        # Trigger load in a thread so we don't block the event loop
+        await asyncio.to_thread(model_manager.get, model_key)
+
+    user_models[user_id] = model_key
+    user_histories.pop(user_id, None)  # Clear history on model switch
+
+    await query.edit_message_text(
+        f"Switched to {model_manager.display_name(model_key)}.\n"
+        "Conversation history cleared."
+    )
 
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -370,6 +544,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle incoming text messages — route to skill and generate response."""
     user_id = update.effective_user.id
     user_text = update.message.text
+    model_key = user_models.get(user_id, default_model_key)
 
     history = user_histories.get(user_id, [])
 
@@ -378,9 +553,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     response, skill_name = await asyncio.to_thread(
-        route_and_generate, user_text, history
+        route_and_generate, user_text, model_key, history
     )
-    logger.info("User %s routed to [%s]", user_id, skill_name)
+    logger.info("User %s [%s] routed to [%s]", user_id, model_key, skill_name)
 
     if not response or not response.strip():
         response = (
@@ -406,15 +581,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     user_id = update.effective_user.id
+    model_key = user_models.get(user_id, default_model_key)
     tmp_path = None
     try:
-        # Download voice OGG to a temp file
         voice_file = await context.bot.get_file(voice.file_id)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp_path = tmp.name
         await voice_file.download_to_drive(tmp_path)
 
-        # Transcribe on CPU in a worker thread
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id, action=ChatAction.TYPING
         )
@@ -430,15 +604,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         history = user_histories.get(user_id, [])
 
-        # Send transcript immediately while generating LLM response concurrently
         async def generate_and_reply() -> str:
             await context.bot.send_chat_action(
                 chat_id=update.effective_chat.id, action=ChatAction.TYPING
             )
             resp, skill_name = await asyncio.to_thread(
-                route_and_generate, transcript, history
+                route_and_generate, transcript, model_key, history
             )
-            logger.info("User %s (voice) routed to [%s]", user_id, skill_name)
+            logger.info("User %s [%s] (voice) routed to [%s]", user_id, model_key, skill_name)
             if not resp or not resp.strip():
                 resp = (
                     "I'm not sure how to respond to that. "
@@ -468,19 +641,39 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Telegram bot for the fine-tuned Qwen2.5 mental health counselor"
+        description="Multi-model Telegram bot for mental health counseling"
     )
     parser.add_argument(
-        "--model_path",
+        "--models",
+        nargs="+",
+        default=["qwen-ft"],
+        choices=list(MODEL_REGISTRY.keys()),
+        help="Model keys to make available (default: qwen-ft)",
+    )
+    parser.add_argument(
+        "--default-model",
         type=str,
-        required=True,
-        help="Path to the fine-tuned base model",
+        default="qwen-ft",
+        choices=list(MODEL_REGISTRY.keys()),
+        help="Default model for new users (default: qwen-ft)",
     )
     parser.add_argument(
-        "--adapters_dir",
+        "--preload",
+        action="store_true",
+        default=False,
+        help="Pre-load all models across GPUs at startup (requires multi-GPU)",
+    )
+    parser.add_argument(
+        "--no-preload",
+        dest="preload",
+        action="store_false",
+        help="Load models on demand (default)",
+    )
+    parser.add_argument(
+        "--adapters-dir",
         type=str,
         default=None,
-        help="Directory containing skill adapter subdirectories (default: None)",
+        help="Directory containing Qwen skill LoRA adapter subdirectories",
     )
     parser.add_argument(
         "--whisper_model",
@@ -500,11 +693,22 @@ def main() -> None:
     if not token:
         raise SystemExit("Set the TELEGRAM_BOT_TOKEN environment variable.")
 
+    global default_model_key
+    default_model_key = args.default_model
+    if default_model_key not in args.models:
+        args.models.insert(0, default_model_key)
+
     global skill_router
     skill_router = SkillRouter()
     print(f"Skill router loaded with {len(skill_router.list_skills())} skills")
 
-    load_model_and_tokenizer(args.model_path, args.adapters_dir)
+    global model_manager
+    model_manager = ModelManager(
+        model_keys=args.models,
+        preload=args.preload,
+        adapters_dir=args.adapters_dir,
+    )
+
     load_whisper_model(args.whisper_model)
 
     global default_whisper_language
@@ -519,11 +723,14 @@ def main() -> None:
     app = builder.build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("clear", clear_command))
+    app.add_handler(CommandHandler("model", model_command))
     app.add_handler(CommandHandler("language", language_command))
+    app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    logger.info("Bot started — polling for updates.")
+    model_names = [model_manager.display_name(k) for k in args.models]
+    logger.info("Bot started — models: %s, default: %s", model_names, default_model_key)
     app.run_polling()
 
 

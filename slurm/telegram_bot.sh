@@ -13,8 +13,8 @@
 # Telegram Bot — Mental Health Counselor
 # ============================================
 #
-# Runs the Telegram bot as a long-running SLURM job.
-# Only needs 1 GPU (inference only, no training).
+# Runs the multi-model Telegram bot as a long-running SLURM job.
+# Pre-loads 6 models (3 fine-tuned + 3 base) across 8 GPUs.
 #
 # Uses CSE proxy for outbound HTTPS access.
 #
@@ -66,8 +66,7 @@ export TRANSFORMERS_CACHE="$HF_HOME/hub"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" logs
 
-# Single GPU
-export CUDA_VISIBLE_DEVICES=0
+# All GPUs for multi-model preloading
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 
 # ---------- Network check (via proxy) ----------
@@ -86,25 +85,22 @@ echo ""
 nvidia-smi
 echo ""
 
-# ---------- Model path ----------
-MODEL_PATH="models/qwen2.5-7b-mental-health-fullft-a100"
+# ---------- Model paths ----------
 ADAPTERS_DIR="adapters"
-
-if [ ! -d "$MODEL_PATH" ]; then
-    echo "ERROR: Model not found at $MODEL_PATH"
-    exit 1
-fi
+MODELS="qwen-ft qwen-base gemma-ft gemma-base mistral-ft mistral-base"
 
 # ---------- Run bot ----------
 echo "Starting Telegram bot..."
-echo "Model: $MODEL_PATH"
+echo "Models: $MODELS"
 echo "Adapters: $ADAPTERS_DIR"
 echo "To stop: scancel $SLURM_JOB_ID"
 echo "========================================"
 
 python scripts/telegram_bot.py \
-    --model_path "$MODEL_PATH" \
-    --adapters_dir "$ADAPTERS_DIR" \
+    --models $MODELS \
+    --default-model qwen-ft \
+    --preload \
+    --adapters-dir "$ADAPTERS_DIR" \
     --whisper_model large-v3
 
 echo "========================================"
