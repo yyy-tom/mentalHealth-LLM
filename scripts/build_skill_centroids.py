@@ -33,9 +33,10 @@ from pathlib import Path
 
 import numpy as np
 
-SCRIPT_DIR = Path(__file__).parent.absolute()
+SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+DATASETS_DIR = PROJECT_ROOT / "datasets"
 
 # Skill names in canonical order
 SKILL_NAMES = [
@@ -111,7 +112,7 @@ def generate_keyword_sentences(keywords: list) -> list:
 
 def load_kaggle_suicide_watch(max_samples: int = 50000) -> tuple:
     """Load kaggle_suicide_watch CSV, return (crisis_texts, non_crisis_texts)."""
-    csv_path = PROJECT_ROOT / "datasets" / "kaggle_suicide_watch" / "Suicide_Detection.csv"
+    csv_path = DATASETS_DIR / "kaggle_suicide_watch" / "Suicide_Detection.csv"
     if not csv_path.exists():
         print(f"  kaggle_suicide_watch not found at {csv_path}")
         return [], []
@@ -147,18 +148,45 @@ def load_kaggle_suicide_watch(max_samples: int = 50000) -> tuple:
 def load_json_examples(path: Path, field: str = "question") -> list:
     """Load examples from a JSON file, extracting the specified field."""
     if not path.exists():
-        print(f"  {path.name} not found")
+        print(f"    NOT FOUND: {path}")
         return []
     with open(path) as f:
         data = json.load(f)
-    return [item[field] for item in data if field in item]
+    items = [item[field] for item in data if field in item]
+    print(f"    {path.name}: {len(items)} examples")
+    return items
 
 
-def load_hf_dataset_texts(dataset_path: str, field: str = "input", max_samples: int = 50000) -> list:
-    """Load text samples from a HuggingFace dataset on disk."""
-    abs_path = PROJECT_ROOT / dataset_path
+def _extract_question_from_instruction(instruction: str) -> str:
+    """Extract the user question from a formatted instruction field.
+
+    Handles the pattern:
+        ... Question: <user question>\n\nPlease provide ...
+    """
+    marker = "Question: "
+    idx = instruction.find(marker)
+    if idx == -1:
+        return ""
+    text = instruction[idx + len(marker):]
+    # Trim at the "Please provide" footer
+    end = text.find("\n\nPlease provide")
+    if end != -1:
+        text = text[:end]
+    return text.strip()
+
+
+def load_hf_dataset_texts(dataset_name: str, field: str = "input", max_samples: int = 50000) -> list:
+    """Load text samples from a HuggingFace dataset on disk.
+
+    Args:
+        dataset_name: Directory name under datasets/ (e.g. "cactus_processed").
+        field: Column name to extract text from. If the field is empty,
+               falls back to extracting from "instruction" (Question: ... pattern).
+        max_samples: Maximum number of samples to load.
+    """
+    abs_path = DATASETS_DIR / dataset_name
     if not abs_path.exists():
-        print(f"  Dataset not found: {abs_path}")
+        print(f"    NOT FOUND: {abs_path}")
         return []
 
     try:
@@ -166,23 +194,34 @@ def load_hf_dataset_texts(dataset_path: str, field: str = "input", max_samples: 
         ds = load_from_disk(str(abs_path))
 
         texts = []
+        fallback_count = 0
         split = ds.get("train", ds.get("validation"))
         if split is None:
-            print(f"  No train/validation split in {abs_path}")
+            print(f"    No train/validation split in {abs_path}")
             return []
 
         for i, row in enumerate(split):
             if i >= max_samples:
                 break
             text = row.get(field, "").strip()
+
+            # Fallback: extract question from instruction field
+            if not text and "instruction" in row:
+                text = _extract_question_from_instruction(row["instruction"])
+                if text:
+                    fallback_count += 1
+
             if text and len(text) >= 10:
                 if len(text) > 512:
                     text = text[:512]
                 texts.append(text)
 
+        if fallback_count > 0:
+            print(f"    ({fallback_count} extracted from instruction field)")
+
         return texts
     except Exception as e:
-        print(f"  Error loading {abs_path}: {e}")
+        print(f"    Error loading {abs_path}: {e}")
         return []
 
 
@@ -190,7 +229,9 @@ def collect_skill_texts(skill_keywords: dict, max_samples: int) -> dict:
     """Collect text samples for each skill from all available data sources."""
     skill_texts = {name: [] for name in SKILL_NAMES}
 
-    print("\nCollecting training texts per skill...")
+    print(f"\nCollecting training texts per skill...")
+    print(f"  PROJECT_ROOT: {PROJECT_ROOT}")
+    print(f"  DATASETS_DIR: {DATASETS_DIR}")
 
     # --- crisis-intervention ---
     print("\n  [crisis-intervention]")
@@ -200,9 +241,8 @@ def collect_skill_texts(skill_keywords: dict, max_samples: int) -> dict:
     skill_texts["crisis-intervention"].extend(crisis_kaggle)
 
     crisis_examples = load_json_examples(
-        PROJECT_ROOT / "datasets" / "crisis_training_examples.json"
+        DATASETS_DIR / "crisis_training_examples.json"
     )
-    print(f"    crisis_training_examples.json: {len(crisis_examples)} examples")
     skill_texts["crisis-intervention"].extend(crisis_examples)
 
     # --- general-support ---
@@ -211,31 +251,30 @@ def collect_skill_texts(skill_keywords: dict, max_samples: int) -> dict:
 
     # --- cbt-therapy ---
     print("\n  [cbt-therapy]")
-    cbt_texts = load_hf_dataset_texts("datasets/cactus_processed", "input", max_samples)
+    cbt_texts = load_hf_dataset_texts("cactus_processed", "input", max_samples)
     print(f"    cactus_processed: {len(cbt_texts)} texts")
     skill_texts["cbt-therapy"].extend(cbt_texts)
 
     # --- empathetic-listening ---
     print("\n  [empathetic-listening]")
-    esconv_texts = load_hf_dataset_texts("datasets/esconv_processed", "input", max_samples)
+    esconv_texts = load_hf_dataset_texts("esconv_processed", "input", max_samples)
     print(f"    esconv_processed: {len(esconv_texts)} texts")
     skill_texts["empathetic-listening"].extend(esconv_texts)
 
     empathy_examples = load_json_examples(
-        PROJECT_ROOT / "datasets" / "empathy_examples.json"
+        DATASETS_DIR / "empathy_examples.json"
     )
-    print(f"    empathy_examples.json: {len(empathy_examples)} examples")
     skill_texts["empathetic-listening"].extend(empathy_examples)
 
     # --- psychoeducation ---
     print("\n  [psychoeducation]")
-    mentalchat_texts = load_hf_dataset_texts("datasets/mentalchat16k_processed", "input", max_samples)
+    mentalchat_texts = load_hf_dataset_texts("mentalchat16k_processed", "input", max_samples)
     print(f"    mentalchat16k_processed: {len(mentalchat_texts)} texts")
     skill_texts["psychoeducation"].extend(mentalchat_texts)
 
     # --- professional-counseling ---
     print("\n  [professional-counseling]")
-    counsel_texts = load_hf_dataset_texts("datasets/counsel_chat_processed", "input", max_samples)
+    counsel_texts = load_hf_dataset_texts("counsel_chat_processed", "input", max_samples)
     print(f"    counsel_chat_processed: {len(counsel_texts)} texts")
     skill_texts["professional-counseling"].extend(counsel_texts)
 
