@@ -69,6 +69,13 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from mental_health_llm.skill_router import SkillRouter
 
+sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
+from evaluation.judge_scoring import (
+    init_judges,
+    score_exchange_async,
+    format_score_report,
+)
+
 _TF_MAJOR = int(transformers.__version__.split(".")[0])
 _DTYPE_KEY = "dtype" if _TF_MAJOR >= 5 else "torch_dtype"
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -297,6 +304,11 @@ user_languages: dict[int, str | None] = {}
 
 default_whisper_language: str | None = None
 
+# Per-user scoring state
+user_scores: dict[int, list[dict]] = {}
+user_pending_scores: dict[int, int] = {}
+_judges_active = False
+
 LANGUAGE_OPTIONS: dict[str, str] = {
     "auto": "Auto-detect",
     "cantonese": "Cantonese (廣東話)",
@@ -382,7 +394,7 @@ def route_and_generate(
 
     Returns (response_text, skill_name).
     """
-    skill_name = skill_router.route(question)
+    skill_name = skill_router.route(question, history=history)
 
     mdl, tok, loaded_skills = model_manager.get(model_key)
 
@@ -401,6 +413,29 @@ def route_and_generate(
     system_prompt = skill_router.get_system_prompt(skill_name)
     response = generate_response(question, system_prompt, mdl, tok, history)
     return response, skill_name
+
+
+# ── Background scoring ────────────────────────────────────────────
+
+
+async def _score_in_background(
+    user_id: int,
+    user_text: str,
+    response: str,
+    history_before: list[tuple[str, str]],
+) -> None:
+    """Fire-and-forget: score one exchange via LLM judges."""
+    user_pending_scores[user_id] = user_pending_scores.get(user_id, 0) + 1
+    try:
+        result = await score_exchange_async(user_text, response, history_before)
+        if result:
+            user_scores.setdefault(user_id, []).append(result)
+    except Exception as e:
+        logger.error("Scoring failed for user %s: %s", user_id, e)
+    finally:
+        user_pending_scores[user_id] = max(
+            0, user_pending_scores.get(user_id, 1) - 1
+        )
 
 
 # ── Whisper ───────────────────────────────────────────────────────
@@ -429,6 +464,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Handle /start command."""
     user_id = update.effective_user.id
     user_histories.pop(user_id, None)
+    user_scores.pop(user_id, None)
+    user_pending_scores.pop(user_id, None)
 
     current_key = user_models.get(user_id, default_model_key)
     current_name = model_manager.display_name(current_key)
@@ -444,6 +481,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Commands:\n"
         "/model - Switch between AI models\n"
         "/language - Set voice transcription language\n"
+        "/score - View conversation quality scores\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
     )
@@ -453,6 +491,8 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Handle /clear command."""
     user_id = update.effective_user.id
     user_histories.pop(user_id, None)
+    user_scores.pop(user_id, None)
+    user_pending_scores.pop(user_id, None)
     await update.message.reply_text("Conversation history cleared. Let's start fresh.")
 
 
@@ -547,6 +587,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     model_key = user_models.get(user_id, default_model_key)
 
     history = user_histories.get(user_id, [])
+    history_snapshot = list(history)
 
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action=ChatAction.TYPING
@@ -569,6 +610,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_histories[user_id] = history
 
     await update.message.reply_text(response)
+
+    if _judges_active:
+        asyncio.create_task(
+            _score_in_background(user_id, user_text, response, history_snapshot)
+        )
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -603,6 +649,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
 
         history = user_histories.get(user_id, [])
+        history_snapshot = list(history)
 
         async def generate_and_reply() -> str:
             await context.bot.send_chat_action(
@@ -631,9 +678,31 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             history.pop(0)
         user_histories[user_id] = history
 
+        if _judges_active:
+            asyncio.create_task(
+                _score_in_background(user_id, transcript, response, history_snapshot)
+            )
+
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /score command — show aggregated quality scores."""
+    user_id = update.effective_user.id
+    scores = user_scores.get(user_id, [])
+    pending = user_pending_scores.get(user_id, 0)
+    total = len(user_histories.get(user_id, []))
+
+    if not _judges_active:
+        await update.message.reply_text(
+            "Scoring is not available — no judge API keys configured."
+        )
+        return
+
+    report = format_score_report(scores, total, pending)
+    await update.message.reply_text(report)
 
 
 # ── Main ────────────────────────────────────────────────────────────
@@ -714,6 +783,18 @@ def main() -> None:
     global default_whisper_language
     default_whisper_language = args.whisper_language
 
+    # Initialise LLM judges for auto-scoring (optional — needs API keys)
+    global _judges_active
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    prompt_path = str(_PROJECT_ROOT / "evaluation" / "llm_judge_prompt.md")
+    active_judges = init_judges(deepseek_key, gemini_key, prompt_path)
+    if active_judges:
+        _judges_active = True
+        logger.info("LLM judges active: %s", active_judges)
+    else:
+        logger.info("No judge API keys found — scoring disabled")
+
     # Configure proxy if HTTPS_PROXY is set (e.g. CSE CUHK HPC cluster)
     builder = Application.builder().token(token)
     proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
@@ -725,6 +806,7 @@ def main() -> None:
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("model", model_command))
     app.add_handler(CommandHandler("language", language_command))
+    app.add_handler(CommandHandler("score", score_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))

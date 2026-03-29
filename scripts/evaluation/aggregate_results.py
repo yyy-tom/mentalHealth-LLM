@@ -2,8 +2,12 @@
 """
 Aggregate LLM judge scores and generate markdown tables for the paper.
 
-Computes per-dimension averages, overall scores, Krippendorff's alpha,
-risk-level breakdowns, score distributions, and optional human-LLM correlation.
+Supports multi-judge scoring: parses new-format filenames ({model}_{judge}_run{N}.json)
+and old-format filenames ({model}_run{N}.json) for backward compatibility.
+
+Computes per-dimension averages, overall scores, Krippendorff's alpha (intra-judge
+and inter-judge), risk-level breakdowns, score distributions, and optional
+human-LLM correlation.
 
 Usage:
     python scripts/evaluation/aggregate_results.py \
@@ -41,6 +45,8 @@ MODEL_DISPLAY_NAMES = {
     "llama-3.1-8b": "Llama 3.1 8B",
 }
 
+KNOWN_JUDGES = {"gpt-4o", "deepseek", "gemini", "claude"}
+
 
 def round_to_half(value: float) -> float:
     """Round to nearest 0.5."""
@@ -48,22 +54,53 @@ def round_to_half(value: float) -> float:
 
 
 def collect_scores(scores_dir: Path) -> dict:
-    """Load all score files and organize by model -> run -> sample.
+    """Load all score files and organize by model -> judge -> run -> sample.
+
+    Handles both new-format ({model}_{judge}_run{N}.json) and old-format
+    ({model}_run{N}.json) filenames. For old-format files, attempts to read
+    judge_model from file metadata; falls back to "unknown".
 
     Returns:
-        {model_key: {run_id: {sample_id: {dim: score, ...}}}}
+        {model_key: {judge: {run_id: {sample_id: {dim: score, ...}}}}}
     """
-    data = defaultdict(lambda: defaultdict(dict))
+    data = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
 
     for path in sorted(scores_dir.glob("*_run*.json")):
         match = re.match(r"(.+)_run(\d+)\.json", path.name)
         if not match:
             continue
-        model_key = match.group(1)
+        prefix = match.group(1)
         run_id = int(match.group(2))
+
+        # Try to extract judge from filename: check if prefix ends with a known judge
+        model_key = None
+        judge = None
+        for j in KNOWN_JUDGES:
+            suffix = f"_{j}"
+            if prefix.endswith(suffix):
+                model_key = prefix[: -len(suffix)]
+                judge = j
+                break
 
         with open(path) as f:
             content = json.load(f)
+
+        # Fallback for old-format files without judge in filename
+        if judge is None:
+            model_key = prefix
+            # Try to infer judge from file metadata
+            metadata = content.get("metadata", {})
+            judge_model_name = metadata.get("judge_model", "")
+            if "gpt-4o" in judge_model_name:
+                judge = "gpt-4o"
+            elif "claude" in judge_model_name:
+                judge = "claude"
+            elif "deepseek" in judge_model_name:
+                judge = "deepseek"
+            elif "gemini" in judge_model_name:
+                judge = "gemini"
+            else:
+                judge = "unknown"
 
         for entry in content["scores"]:
             sid = entry["sample_id"]
@@ -72,9 +109,28 @@ def collect_scores(scores_dir: Path) -> dict:
                 dim_data = entry.get(dim, {})
                 score = dim_data.get("score", "N/A") if isinstance(dim_data, dict) else "N/A"
                 scores[dim] = score
-            data[model_key][run_id][sid] = scores
+            data[model_key][judge][run_id][sid] = scores
 
     return dict(data)
+
+
+def flatten_judge_data(model_judges: dict) -> dict:
+    """Merge all judges' runs into a flat {run_key: samples} dict.
+
+    Creates synthetic run keys like "gpt-4o_1", "deepseek_2" so that existing
+    compute functions (which expect {run_id: {sample_id: scores}}) work unchanged.
+
+    Args:
+        model_judges: {judge: {run_id: {sample_id: scores}}}
+
+    Returns:
+        {synthetic_run_key: {sample_id: scores}}
+    """
+    flat = {}
+    for judge, runs in model_judges.items():
+        for run_id, samples in runs.items():
+            flat[f"{judge}_{run_id}"] = samples
+    return flat
 
 
 def compute_dimension_averages(model_data: dict) -> dict:
@@ -161,6 +217,73 @@ def compute_krippendorff_alpha(model_data: dict) -> dict:
     return alphas
 
 
+def compute_inter_judge_alpha(model_judges: dict) -> dict:
+    """Compute Krippendorff's alpha across judges for a single model.
+
+    Each judge-run combination is treated as a separate rater. For each dimension,
+    builds a raters x samples matrix across all judges and runs.
+
+    Args:
+        model_judges: {judge: {run_id: {sample_id: scores}}}
+
+    Returns:
+        {dim: alpha_value}
+    """
+    import krippendorff
+
+    # Build list of (judge, run_id) tuples as raters
+    raters = []
+    for judge, runs in sorted(model_judges.items()):
+        for run_id in sorted(runs.keys()):
+            raters.append((judge, run_id))
+
+    if len(raters) < 2:
+        return {dim: "N/A (insufficient raters)" for dim in DIMENSIONS}
+
+    # Check we have at least 2 distinct judges
+    distinct_judges = set(j for j, _ in raters)
+    if len(distinct_judges) < 2:
+        return {dim: "N/A (single judge)" for dim in DIMENSIONS}
+
+    # Get all sample IDs
+    all_sids = set()
+    for judge, runs in model_judges.items():
+        for run_id, samples in runs.items():
+            all_sids.update(samples.keys())
+    all_sids = sorted(all_sids)
+
+    alphas = {}
+    for dim in DIMENSIONS:
+        matrix = []
+        for judge, run_id in raters:
+            row = []
+            for sid in all_sids:
+                val = model_judges[judge].get(run_id, {}).get(sid, {}).get(dim, "N/A")
+                if isinstance(val, (int, float)):
+                    row.append(val)
+                else:
+                    row.append(np.nan)
+            matrix.append(row)
+
+        reliability_data = np.array(matrix)
+
+        valid_counts = np.sum(~np.isnan(reliability_data), axis=0)
+        if np.sum(valid_counts >= 2) < 2:
+            alphas[dim] = "N/A"
+            continue
+
+        try:
+            alpha = krippendorff.alpha(
+                reliability_data=reliability_data,
+                level_of_measurement="ordinal",
+            )
+            alphas[dim] = round(alpha, 3)
+        except Exception:
+            alphas[dim] = "N/A"
+
+    return alphas
+
+
 def compute_safety_by_risk(model_data: dict) -> dict:
     """Compute average Safety score grouped by risk level."""
     risk_scores = defaultdict(list)
@@ -202,8 +325,12 @@ def compute_score_distributions(model_data: dict) -> dict:
     return distributions
 
 
-def compute_spearman(scores_data: dict, human_scores_path: str) -> dict | None:
-    """Compute Spearman correlation between LLM judge and human scores."""
+def compute_spearman(flat_scores_data: dict, human_scores_path: str) -> dict | None:
+    """Compute Spearman correlation between LLM judge and human scores.
+
+    Args:
+        flat_scores_data: {model_key: {run_key: {sample_id: scores}}}
+    """
     from scipy.stats import spearmanr
 
     with open(human_scores_path) as f:
@@ -220,7 +347,7 @@ def compute_spearman(scores_data: dict, human_scores_path: str) -> dict | None:
         llm_scores = []
         human_scores = []
 
-        for model_key, model_data in scores_data.items():
+        for model_key, model_data in flat_scores_data.items():
             for run_id, samples in model_data.items():
                 for sid, scores in samples.items():
                     if sid not in human_map:
@@ -243,19 +370,10 @@ def compute_spearman(scores_data: dict, human_scores_path: str) -> dict | None:
     return correlations
 
 
-def generate_markdown(
-    all_averages: dict,
-    all_overalls: dict,
-    all_alphas: dict,
-    all_safety_by_risk: dict,
-    all_distributions: dict,
-    correlations: dict | None,
-) -> str:
-    """Generate markdown tables for the paper."""
+def _format_comparison_table(all_averages: dict, all_overalls: dict, title: str) -> list[str]:
+    """Generate a model comparison table section."""
     lines = []
-
-    # Main comparison table
-    lines.append("## Model Comparison\n")
+    lines.append(f"## {title}\n")
     header = "| Model | " + " | ".join(DIMENSION_LABELS[d] for d in DIMENSIONS) + " | Overall |"
     sep = "|" + "|".join(["---"] * (len(DIMENSIONS) + 2)) + "|"
     lines.append(header)
@@ -273,9 +391,13 @@ def generate_markdown(
         lines.append("| " + " | ".join(cells) + " |")
 
     lines.append("")
+    return lines
 
-    # Inter-run consistency (Krippendorff's alpha)
-    lines.append("## Inter-Run Consistency (Krippendorff's Alpha)\n")
+
+def _format_alpha_table(all_alphas: dict, title: str) -> list[str]:
+    """Generate a Krippendorff's alpha table section."""
+    lines = []
+    lines.append(f"## {title}\n")
     header = "| Model | " + " | ".join(DIMENSION_LABELS[d] for d in DIMENSIONS) + " |"
     sep = "|" + "|".join(["---"] * (len(DIMENSIONS) + 1)) + "|"
     lines.append(header)
@@ -291,14 +413,73 @@ def generate_markdown(
         lines.append("| " + " | ".join(cells) + " |")
 
     lines.append("")
+    return lines
 
-    # Safety by risk level
+
+def generate_markdown(
+    combined_averages: dict,
+    combined_overalls: dict,
+    combined_alphas: dict,
+    combined_safety_by_risk: dict,
+    combined_distributions: dict,
+    per_judge_results: dict,
+    inter_judge_alphas: dict,
+    correlations: dict | None,
+) -> str:
+    """Generate markdown tables for the paper.
+
+    Sections:
+    1. Combined Model Comparison (all judges averaged)
+    2. Per-Judge Model Comparison (one table per judge)
+    3. Intra-Judge Consistency (Krippendorff alpha within each judge)
+    4. Inter-Judge Agreement (Krippendorff alpha across judges)
+    5. Safety by Risk Level (combined)
+    6. Score Distributions (combined)
+    7. Human-LLM Correlation (if provided)
+    """
+    lines = []
+
+    # 1. Combined Model Comparison
+    lines.extend(_format_comparison_table(
+        combined_averages, combined_overalls, "Model Comparison (All Judges Combined)",
+    ))
+
+    # 2. Per-Judge Model Comparison
+    judges = sorted(per_judge_results.keys())
+    if len(judges) > 1:
+        for judge in judges:
+            jr = per_judge_results[judge]
+            lines.extend(_format_comparison_table(
+                jr["averages"], jr["overall_scores"],
+                f"Model Comparison ({judge})",
+            ))
+
+    # 3. Intra-Judge Consistency
+    if len(judges) > 1:
+        for judge in judges:
+            jr = per_judge_results[judge]
+            lines.extend(_format_alpha_table(
+                jr["krippendorff_alpha"],
+                f"Intra-Judge Consistency ({judge}, Krippendorff's Alpha)",
+            ))
+    else:
+        lines.extend(_format_alpha_table(
+            combined_alphas, "Inter-Run Consistency (Krippendorff's Alpha)",
+        ))
+
+    # 4. Inter-Judge Agreement
+    if inter_judge_alphas:
+        lines.extend(_format_alpha_table(
+            inter_judge_alphas, "Inter-Judge Agreement (Krippendorff's Alpha)",
+        ))
+
+    # 5. Safety by Risk Level
     lines.append("## Safety Score by Risk Level\n")
     lines.append("| Model | Low | Medium | High |")
     lines.append("|---|---|---|---|")
 
-    for model_key in sorted(all_safety_by_risk.keys()):
-        sbr = all_safety_by_risk[model_key]
+    for model_key in sorted(combined_safety_by_risk.keys()):
+        sbr = combined_safety_by_risk[model_key]
         name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
         cells = [name]
         for risk in ["low", "medium", "high"]:
@@ -312,15 +493,15 @@ def generate_markdown(
 
     lines.append("")
 
-    # Score distributions
+    # 6. Score Distributions
     lines.append("## Score Distributions\n")
-    for model_key in sorted(all_distributions.keys()):
+    for model_key in sorted(combined_distributions.keys()):
         name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
         lines.append(f"### {name}\n")
         lines.append("| Dimension | 1 | 2 | 3 | 4 | 5 | N/A |")
         lines.append("|---|---|---|---|---|---|---|")
 
-        dists = all_distributions[model_key]
+        dists = combined_distributions[model_key]
         for dim in DIMENSIONS:
             dist = dists[dim]
             label = DIMENSION_LABELS[dim]
@@ -330,7 +511,7 @@ def generate_markdown(
 
         lines.append("")
 
-    # Spearman correlation (if provided)
+    # 7. Spearman correlation (if provided)
     if correlations:
         lines.append("## Human-LLM Correlation (Spearman's Rho)\n")
         lines.append("| Dimension | Rho | p-value | n |")
@@ -367,45 +548,88 @@ def main():
     print("Aggregating LLM Judge Results")
     print("=" * 60)
 
-    # Collect all scores
+    # Collect all scores: {model_key: {judge: {run_id: {sample_id: scores}}}}
     scores_data = collect_scores(scores_dir)
     if not scores_data:
         print(f"No score files found in {scores_dir}")
         return
 
     print(f"Found scores for models: {list(scores_data.keys())}")
+    for model_key, judges in scores_data.items():
+        for judge, runs in judges.items():
+            total = sum(len(s) for s in runs.values())
+            print(f"  {model_key} / {judge}: {len(runs)} run(s), {total} scored entries")
 
-    all_averages = {}
-    all_overalls = {}
-    all_alphas = {}
-    all_safety_by_risk = {}
-    all_distributions = {}
+    # Identify all judges across all models
+    all_judges = set()
+    for model_key, judges in scores_data.items():
+        all_judges.update(judges.keys())
+    print(f"Judges found: {sorted(all_judges)}")
 
-    for model_key, model_data in sorted(scores_data.items()):
-        print(f"\nProcessing: {model_key}")
-        runs = sorted(model_data.keys())
-        total_scores = sum(len(samples) for samples in model_data.values())
-        print(f"  Runs: {runs}, Total scored entries: {total_scores}")
+    # --- Per-judge analysis ---
+    per_judge_results = {}
+    for judge in sorted(all_judges):
+        print(f"\n--- Per-judge analysis: {judge} ---")
+        judge_averages = {}
+        judge_overalls = {}
+        judge_alphas = {}
 
-        all_averages[model_key] = compute_dimension_averages(model_data)
-        all_overalls[model_key] = compute_overall(all_averages[model_key])
-        all_alphas[model_key] = compute_krippendorff_alpha(model_data)
-        all_safety_by_risk[model_key] = compute_safety_by_risk(model_data)
-        all_distributions[model_key] = compute_score_distributions(model_data)
+        for model_key, judges in sorted(scores_data.items()):
+            if judge not in judges:
+                continue
+            model_data = judges[judge]  # {run_id: {sample_id: scores}}
+            judge_averages[model_key] = compute_dimension_averages(model_data)
+            judge_overalls[model_key] = compute_overall(judge_averages[model_key])
+            judge_alphas[model_key] = compute_krippendorff_alpha(model_data)
 
-        print(f"  Averages: {all_averages[model_key]}")
-        print(f"  Overall:  {all_overalls[model_key]}")
+            print(f"  {model_key}: avg={judge_averages[model_key]}, overall={judge_overalls[model_key]}")
 
-    # Spearman correlation (optional)
+        per_judge_results[judge] = {
+            "averages": judge_averages,
+            "overall_scores": judge_overalls,
+            "krippendorff_alpha": judge_alphas,
+        }
+
+    # --- Combined analysis (all judges merged) ---
+    print("\n--- Combined analysis (all judges) ---")
+    combined_averages = {}
+    combined_overalls = {}
+    combined_alphas = {}
+    combined_safety_by_risk = {}
+    combined_distributions = {}
+
+    for model_key, judges in sorted(scores_data.items()):
+        flat = flatten_judge_data(judges)
+        combined_averages[model_key] = compute_dimension_averages(flat)
+        combined_overalls[model_key] = compute_overall(combined_averages[model_key])
+        combined_alphas[model_key] = compute_krippendorff_alpha(flat)
+        combined_safety_by_risk[model_key] = compute_safety_by_risk(flat)
+        combined_distributions[model_key] = compute_score_distributions(flat)
+
+        print(f"  {model_key}: avg={combined_averages[model_key]}, overall={combined_overalls[model_key]}")
+
+    # --- Inter-judge agreement ---
+    inter_judge_alphas = {}
+    if len(all_judges) >= 2:
+        print("\n--- Inter-judge agreement ---")
+        for model_key, judges in sorted(scores_data.items()):
+            inter_judge_alphas[model_key] = compute_inter_judge_alpha(judges)
+            print(f"  {model_key}: {inter_judge_alphas[model_key]}")
+
+    # Spearman correlation (optional) -- uses combined flat data
     correlations = None
     if args.human_scores:
         print(f"\nComputing human-LLM correlation from {args.human_scores}")
-        correlations = compute_spearman(scores_data, args.human_scores)
+        flat_all = {}
+        for model_key, judges in scores_data.items():
+            flat_all[model_key] = flatten_judge_data(judges)
+        correlations = compute_spearman(flat_all, args.human_scores)
 
     # Generate markdown
     markdown = generate_markdown(
-        all_averages, all_overalls, all_alphas,
-        all_safety_by_risk, all_distributions, correlations,
+        combined_averages, combined_overalls, combined_alphas,
+        combined_safety_by_risk, combined_distributions,
+        per_judge_results, inter_judge_alphas, correlations,
     )
 
     md_path = output_dir / "comparison_tables.md"
@@ -415,14 +639,19 @@ def main():
 
     # Save full results JSON
     full_results = {
-        "averages": all_averages,
-        "overall_scores": all_overalls,
-        "krippendorff_alpha": all_alphas,
-        "safety_by_risk": all_safety_by_risk,
-        "score_distributions": all_distributions,
+        "combined": {
+            "averages": combined_averages,
+            "overall_scores": combined_overalls,
+            "krippendorff_alpha": combined_alphas,
+            "safety_by_risk": combined_safety_by_risk,
+            "score_distributions": combined_distributions,
+        },
+        "per_judge": per_judge_results,
     }
+    if inter_judge_alphas:
+        full_results["combined"]["inter_judge_alpha"] = inter_judge_alphas
     if correlations:
-        full_results["human_llm_correlation"] = correlations
+        full_results["combined"]["human_llm_correlation"] = correlations
 
     json_path = output_dir / "full_results.json"
     with open(json_path, "w") as f:

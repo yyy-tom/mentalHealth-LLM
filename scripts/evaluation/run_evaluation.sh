@@ -21,6 +21,9 @@
 # To change judge model:
 #   JUDGE_MODEL=claude bash scripts/evaluation/run_evaluation.sh
 #
+# To run multiple judges:
+#   JUDGE_MODELS="gpt-4o deepseek gemini" bash scripts/evaluation/run_evaluation.sh
+#
 # ============================================================
 
 set -euo pipefail
@@ -32,7 +35,12 @@ TEST_SET="evaluation/test_set.json"
 RESPONSES_DIR="evaluation/responses"
 SCORES_DIR="evaluation/scores"
 RESULTS_DIR="evaluation/results"
-JUDGE_MODEL="${JUDGE_MODEL:-gpt-4o}"
+# Backward-compatible: JUDGE_MODEL (single) -> JUDGE_MODELS (multi)
+if [ -n "${JUDGE_MODEL:-}" ] && [ -z "${JUDGE_MODELS:-}" ]; then
+    JUDGE_MODELS="$JUDGE_MODEL"
+else
+    JUDGE_MODELS="${JUDGE_MODELS:-gpt-4o}"
+fi
 JUDGE_RUNS="${JUDGE_RUNS:-3}"
 
 # Skip flags (set to 1 to skip a step)
@@ -46,7 +54,7 @@ echo "  LLM-as-a-Judge Evaluation Pipeline"
 echo "============================================================"
 echo "  Project dir  : $PROJECT_DIR"
 echo "  Datasets dir : $DATASETS_DIR"
-echo "  Judge model  : $JUDGE_MODEL"
+echo "  Judge models : $JUDGE_MODELS"
 echo "  Judge runs   : $JUDGE_RUNS"
 echo "  Start time   : $(date)"
 echo "============================================================"
@@ -117,32 +125,59 @@ if [ "$SKIP_JUDGE" = "0" ]; then
     echo ""
     echo "========================================"
     echo "[3/4] Running LLM judge scoring..."
-    echo "       Judge: $JUDGE_MODEL"
-    echo "       Runs:  $JUDGE_RUNS"
+    echo "       Judges: $JUDGE_MODELS"
+    echo "       Runs:   $JUDGE_RUNS"
     echo "========================================"
 
-    # Check for API key
-    if [ "$JUDGE_MODEL" = "gpt-4o" ]; then
-        if [ -z "${OPENAI_API_KEY:-}" ]; then
-            echo "ERROR: OPENAI_API_KEY not set"
-            echo "  export OPENAI_API_KEY=sk-..."
-            exit 1
-        fi
-    elif [ "$JUDGE_MODEL" = "claude" ]; then
-        if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-            echo "ERROR: ANTHROPIC_API_KEY not set"
-            echo "  export ANTHROPIC_API_KEY=sk-ant-..."
-            exit 1
-        fi
-    fi
+    for JUDGE in $JUDGE_MODELS; do
+        echo ""
+        echo "--- Judge: $JUDGE ---"
 
-    python3 scripts/evaluation/run_llm_judge.py \
-        --judge "$JUDGE_MODEL" \
-        --runs "$JUDGE_RUNS" \
-        --resume \
-        --responses-dir "$RESPONSES_DIR" \
-        --test-set "$TEST_SET" \
-        --scores-dir "$SCORES_DIR"
+        # Check for API key per judge
+        case "$JUDGE" in
+            gpt-4o)
+                if [ -z "${OPENAI_API_KEY:-}" ]; then
+                    echo "ERROR: OPENAI_API_KEY not set for judge $JUDGE"
+                    echo "  export OPENAI_API_KEY=sk-..."
+                    exit 1
+                fi
+                ;;
+            deepseek)
+                if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+                    echo "ERROR: DEEPSEEK_API_KEY not set for judge $JUDGE"
+                    echo "  export DEEPSEEK_API_KEY=sk-..."
+                    exit 1
+                fi
+                ;;
+            gemini)
+                if [ -z "${GEMINI_API_KEY:-}" ]; then
+                    echo "ERROR: GEMINI_API_KEY not set for judge $JUDGE"
+                    echo "  export GEMINI_API_KEY=AIza..."
+                    exit 1
+                fi
+                ;;
+            claude)
+                if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+                    echo "ERROR: ANTHROPIC_API_KEY not set for judge $JUDGE"
+                    echo "  export ANTHROPIC_API_KEY=sk-ant-..."
+                    exit 1
+                fi
+                ;;
+            *)
+                echo "ERROR: Unknown judge model: $JUDGE"
+                echo "  Supported: gpt-4o, deepseek, gemini, claude"
+                exit 1
+                ;;
+        esac
+
+        python3 scripts/evaluation/run_llm_judge.py \
+            --judge "$JUDGE" \
+            --runs "$JUDGE_RUNS" \
+            --resume \
+            --responses-dir "$RESPONSES_DIR" \
+            --test-set "$TEST_SET" \
+            --scores-dir "$SCORES_DIR"
+    done
 
     echo ""
 else

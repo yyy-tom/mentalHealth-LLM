@@ -149,5 +149,16 @@
     }
   ],
   "default_skill": "general-support",
-  "confidence_threshold": 0.3
+  "confidence_threshold": 0.3,
+  "router_backend": "auto",
+  "crisis_gate": {
+    "enabled": true,
+    "threshold": 0.45,
+    "keyword_boost": true
+  },
+  "embedding_router": {
+    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+    "history_window": 3,
+    "history_weight": 0.2
+  }
 }

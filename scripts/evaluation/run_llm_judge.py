@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Score model responses via GPT-4o or Claude Sonnet API on 5 clinical dimensions.
+Score model responses via LLM-as-a-judge on 5 clinical dimensions.
 
+Supports GPT-4o, Claude, DeepSeek V3, and Gemini 2.5 Flash as judges.
 Runs 3 times per sample for inter-run consistency measurement. Supports resume
 via progress files for mid-run recovery.
 
 Usage:
     python scripts/evaluation/run_llm_judge.py --judge gpt-4o --runs 3 --resume
-    python scripts/evaluation/run_llm_judge.py --judge claude --runs 1 --models qwen2.5-7b
+    python scripts/evaluation/run_llm_judge.py --judge deepseek --runs 1 --models qwen2.5-7b
+    python scripts/evaluation/run_llm_judge.py --judge gemini --runs 1 --models qwen2.5-7b
 """
 
 import argparse
@@ -21,6 +23,8 @@ from pathlib import Path
 JUDGE_MODELS = {
     "gpt-4o": "gpt-4o",
     "claude": "claude-sonnet-4-5-20250929",
+    "deepseek": "deepseek-chat",
+    "gemini": "gemini-2.5-flash",
 }
 
 DIMENSIONS = ["empathy", "cbt", "guided_discovery", "safety", "clinical_appropriateness"]
@@ -183,12 +187,13 @@ def score_model_run(
     user_template: str,
     call_fn,
     judge_model: str,
+    judge_key: str,
     scores_dir: Path,
     resume: bool,
 ):
     """Score all responses for one model in one run."""
-    output_path = scores_dir / f"{model_key}_run{run_id}.json"
-    progress_path = scores_dir / f".{model_key}_run{run_id}.progress.jsonl"
+    output_path = scores_dir / f"{model_key}_{judge_key}_run{run_id}.json"
+    progress_path = scores_dir / f".{model_key}_{judge_key}_run{run_id}.progress.jsonl"
 
     # Check if already complete
     if resume and output_path.exists():
@@ -310,13 +315,32 @@ def main():
             raise RuntimeError("OPENAI_API_KEY environment variable not set")
         client = openai.OpenAI(api_key=api_key)
         call_fn = lambda sys, usr: call_openai(client, sys, usr, judge_model)
-    else:
+    elif args.judge == "deepseek":
+        import openai
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY environment variable not set")
+        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        call_fn = lambda sys, usr: call_openai(client, sys, usr, judge_model)
+    elif args.judge == "gemini":
+        import openai
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        call_fn = lambda sys, usr: call_openai(client, sys, usr, judge_model)
+    elif args.judge == "claude":
         import anthropic
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY environment variable not set")
         client = anthropic.Anthropic(api_key=api_key)
         call_fn = lambda sys, usr: call_anthropic(client, sys, usr, judge_model)
+    else:
+        raise RuntimeError(f"Unknown judge: {args.judge}")
 
     print(f"Judge model: {judge_model}")
 
@@ -367,6 +391,7 @@ def main():
                 user_template=user_template,
                 call_fn=call_fn,
                 judge_model=judge_model,
+                judge_key=args.judge,
                 scores_dir=scores_dir,
                 resume=args.resume,
             )

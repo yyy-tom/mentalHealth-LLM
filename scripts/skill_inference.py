@@ -318,7 +318,7 @@ def main():
         if force_skill:
             skill_name = force_skill
         else:
-            skill_name = router.route(question)
+            skill_name = router.route(question, history=history)
 
         # Activate adapter if available
         if has_adapters and skill_name in loaded_skills:

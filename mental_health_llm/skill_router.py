@@ -1,8 +1,10 @@
 """
 Skill Router for Mental Health LLM.
 
-CPU-only keyword/regex classifier that routes user messages to the appropriate
-skill-specific LoRA adapter. No ML model or GPU required.
+Facade that delegates to the best available routing backend:
+  - "embedding" → EmbeddingRouter (requires sentence-transformers + centroids)
+  - "keyword"   → KeywordRouter (CPU-only, zero dependencies)
+  - "auto"      → try embedding, fall back to keyword
 
 Usage:
     from mental_health_llm.skill_router import SkillRouter
@@ -13,148 +15,156 @@ Usage:
 
     skill, confidence, details = router.route_with_confidence("What is anxiety?")
     # -> ("psychoeducation", 0.8, {...})
+
+    # Explicitly select backend:
+    router = SkillRouter(backend="keyword")    # force keyword-only
+    router = SkillRouter(backend="embedding")  # force embedding (raises if unavailable)
 """
 
 import json
-import re
+import logging
+import warnings
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 class SkillRouter:
-    """Routes user messages to skill-specific LoRA adapters using keyword/regex matching."""
+    """Routes user messages to skill-specific LoRA adapters.
 
-    def __init__(self, config_path: Optional[str] = None):
+    Thin facade that auto-selects the best available routing backend.
+    All existing callers work unchanged — the constructor signature is
+    backward-compatible, and new parameters are keyword-only with defaults.
+    """
+
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        *,
+        backend: str = "auto",
+    ):
         """
-        Initialize the router from a skills config JSON file.
+        Initialize the router with backend selection.
 
         Args:
             config_path: Path to skills_config.json. Defaults to the one
                          bundled with the mental_health_llm package.
+            backend: Routing backend — "keyword", "embedding", or "auto".
+                     "auto" tries embedding first, falls back to keyword.
         """
         if config_path is None:
             config_path = str(Path(__file__).parent / "skills_config.json")
 
+        # Read optional router config from skills_config.json
         with open(config_path, "r") as f:
             config = json.load(f)
 
-        self.default_skill = config.get("default_skill", "general-support")
-        self.confidence_threshold = config.get("confidence_threshold", 0.3)
+        if backend == "auto":
+            backend = config.get("router_backend", "auto")
 
-        # Parse skills and sort by priority (highest first)
-        self.skills = []
-        for skill_def in config["skills"]:
-            compiled_patterns = []
-            for p in skill_def.get("patterns", []):
-                try:
-                    compiled_patterns.append(re.compile(p, re.IGNORECASE))
-                except re.error:
-                    pass  # skip invalid patterns
+        self._backend_name = backend
+        self._delegate = None
 
-            self.skills.append({
-                "name": skill_def["name"],
-                "description": skill_def.get("description", ""),
-                "priority": skill_def.get("priority", 0),
-                "adapter_path": skill_def.get("adapter_path", ""),
-                "system_prompt": skill_def.get("system_prompt", ""),
-                "keywords": [kw.lower() for kw in skill_def.get("keywords", [])],
-                "patterns": compiled_patterns,
-            })
+        if backend in ("auto", "embedding"):
+            self._delegate = self._try_embedding(config_path, config)
 
-        self.skills.sort(key=lambda s: s["priority"], reverse=True)
+        if self._delegate is None:
+            if backend == "embedding":
+                raise RuntimeError(
+                    "Embedding router requested but could not be initialized. "
+                    "Install sentence-transformers and build centroids first."
+                )
+            # Fall back to keyword
+            from mental_health_llm.keyword_router import KeywordRouter
 
-        # Build lookup by name
-        self._by_name = {s["name"]: s for s in self.skills}
+            self._delegate = KeywordRouter(config_path=config_path)
+            if backend == "auto":
+                logger.info("Using keyword router (embedding backend unavailable)")
+            self._backend_name = "keyword"
 
-    def route(self, message: str) -> str:
+    @staticmethod
+    def _try_embedding(config_path: str, config: dict):
+        """Attempt to create an EmbeddingRouter. Returns None on failure."""
+        try:
+            from mental_health_llm.embedding_router import EmbeddingRouter
+
+            emb_config = config.get("embedding_router", {})
+            crisis_config = config.get("crisis_gate", {})
+
+            router = EmbeddingRouter(
+                config_path=config_path,
+                model_name=emb_config.get(
+                    "model_name", "sentence-transformers/all-MiniLM-L6-v2"
+                ),
+                history_window=emb_config.get("history_window", 3),
+                history_weight=emb_config.get("history_weight", 0.2),
+                crisis_threshold=crisis_config.get("threshold", 0.45),
+                crisis_keyword_boost=crisis_config.get("keyword_boost", True),
+            )
+            logger.info("Using embedding router")
+            return router
+
+        except ImportError:
+            warnings.warn(
+                "sentence-transformers not installed. "
+                "Install with: pip install mental-health-llm[router]",
+                stacklevel=3,
+            )
+            return None
+        except FileNotFoundError as e:
+            warnings.warn(str(e), stacklevel=3)
+            return None
+        except Exception as e:
+            warnings.warn(
+                f"Failed to initialize embedding router: {e}",
+                stacklevel=3,
+            )
+            return None
+
+    @property
+    def backend(self) -> str:
+        """Return the name of the active routing backend."""
+        return self._backend_name
+
+    # --- Delegated interface (backward-compatible signatures) ---
+
+    def route(self, message: str, history: Optional[list] = None) -> str:
         """
         Route a user message to the best-matching skill.
 
         Args:
             message: The user's input message.
+            history: Optional list of (user_msg, assistant_msg) tuples.
 
         Returns:
             Skill name string (e.g. "crisis-intervention").
         """
-        skill, _, _ = self.route_with_confidence(message)
-        return skill
+        return self._delegate.route(message, history)
 
-    def route_with_confidence(self, message: str) -> tuple:
+    def route_with_confidence(
+        self, message: str, history: Optional[list] = None
+    ) -> tuple:
         """
         Route a message and return confidence details for debugging.
 
         Args:
             message: The user's input message.
+            history: Optional conversation history.
 
         Returns:
             Tuple of (skill_name, confidence, details_dict).
-            details_dict contains 'keyword_matches', 'pattern_matches',
-            and 'scores' per skill.
         """
-        msg_lower = message.lower()
-        details = {"scores": {}}
-        best_skill = self.default_skill
-        best_score = 0.0
-
-        for skill in self.skills:
-            name = skill["name"]
-            if name == self.default_skill and skill["priority"] == 0:
-                # Default skill is the fallback — no matching needed
-                continue
-
-            keyword_matches = []
-            pattern_matches = []
-
-            # Keyword matching (exact substring in lowered message)
-            for kw in skill["keywords"]:
-                if kw in msg_lower:
-                    keyword_matches.append(kw)
-
-            # Regex pattern matching
-            for pattern in skill["patterns"]:
-                match = pattern.search(message)
-                if match:
-                    pattern_matches.append(match.group())
-
-            # Score: weighted combination of matches
-            # Keywords contribute 0.3 each (capped at 1.0)
-            # Patterns contribute 0.4 each (capped at 1.0)
-            kw_score = min(len(keyword_matches) * 0.3, 1.0)
-            pat_score = min(len(pattern_matches) * 0.4, 1.0)
-            score = min(kw_score + pat_score, 1.0)
-
-            details["scores"][name] = {
-                "score": score,
-                "keyword_matches": keyword_matches,
-                "pattern_matches": pattern_matches,
-            }
-
-            if score > best_score:
-                best_score = score
-                best_skill = name
-
-        # If no skill scored above threshold, use default
-        if best_score < self.confidence_threshold:
-            best_skill = self.default_skill
-
-        return best_skill, best_score, details
+        return self._delegate.route_with_confidence(message, history)
 
     def get_system_prompt(self, skill_name: str) -> str:
         """Get the system prompt for a given skill."""
-        skill = self._by_name.get(skill_name)
-        if skill:
-            return skill["system_prompt"]
-        # Fallback
-        default = self._by_name.get(self.default_skill)
-        return default["system_prompt"] if default else ""
+        return self._delegate.get_system_prompt(skill_name)
 
     def get_adapter_path(self, skill_name: str) -> str:
         """Get the adapter path for a given skill."""
-        skill = self._by_name.get(skill_name)
-        if skill:
-            return skill["adapter_path"]
-        return ""
+        return self._delegate.get_adapter_path(skill_name)
 
     def list_skills(self) -> list:
         """Return list of all skill names in priority order."""
-        return [s["name"] for s in self.skills]
+        return self._delegate.list_skills()
