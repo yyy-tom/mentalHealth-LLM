@@ -174,11 +174,14 @@ class SkillLoRATrainer:
 
         # BF16 / FP16 auto-detection
         if cuda_available:
-            # Use device 0 for capability check — all GPUs on the node are
-            # the same type, and LOCAL_RANK may exceed device_count when
-            # SLURM allocates fewer GPUs than torchrun processes.
-            capability = torch.cuda.get_device_capability(0)
-            bf16_supported = capability[0] >= 8
+            # Use torch.cuda.is_bf16_supported() which matches what
+            # transformers TrainingArguments validates internally.
+            try:
+                bf16_supported = torch.cuda.is_bf16_supported()
+            except AttributeError:
+                # Older PyTorch: fall back to compute capability check
+                capability = torch.cuda.get_device_capability(0)
+                bf16_supported = capability[0] >= 8
             if self.config.get("bf16", True) and not bf16_supported:
                 logger.warning("bf16 not supported on this GPU, falling back to fp16")
                 self.config["bf16"] = False
@@ -414,41 +417,54 @@ class SkillLoRATrainer:
             return_tensors="pt",
         )
 
-        # Training arguments
-        training_args = TrainingArguments(
-            output_dir=output_dir,
-            num_train_epochs=self.config.get("num_epochs", 3),
-            per_device_train_batch_size=self.config.get("batch_size", 4),
-            per_device_eval_batch_size=self.config.get("eval_batch_size", 4),
-            gradient_accumulation_steps=self.config.get("gradient_accumulation_steps", 8),
-            learning_rate=self.config.get("learning_rate", 1e-4),
-            weight_decay=self.config.get("weight_decay", 0.01),
-            warmup_ratio=self.config.get("warmup_ratio", 0.03),
-            lr_scheduler_type=self.config.get("lr_scheduler_type", "cosine"),
-            logging_steps=self.config.get("logging_steps", 50),
-            eval_steps=self.config.get("eval_steps", 500),
-            save_steps=self.config.get("save_steps", 1000),
-            eval_strategy=self.config.get("eval_strategy", "steps"),
-            save_strategy=self.config.get("save_strategy", "steps"),
-            save_total_limit=self.config.get("save_total_limit", 2),
-            load_best_model_at_end=self.config.get("load_best_model_at_end", True),
-            metric_for_best_model=self.config.get("metric_for_best_model", "eval_loss"),
-            greater_is_better=False,
-            fp16=self.config.get("fp16", False),
-            bf16=self.config.get("bf16", True),
-            gradient_checkpointing=self.config.get("gradient_checkpointing", True),
-            remove_unused_columns=False,
-            optim=self.config.get("optim", "adamw_torch_fused"),
-            max_grad_norm=self.config.get("max_grad_norm", 1.0),
-            report_to="wandb" if self.config.get("use_wandb", False) else "none",
-            run_name=self.config.get("run_name", f"skill-lora-{self.skill_name}"),
-            seed=self.config.get("seed", 42),
-            ddp_find_unused_parameters=False,
-            ddp_broadcast_buffers=False,
-            ddp_bucket_cap_mb=5,
-            dataloader_pin_memory=True,
-            dataloader_num_workers=self.config.get("dataloader_num_workers", 0),
-        )
+        # Build TrainingArguments — retry with fp16 if bf16 is rejected
+        def _build_training_args(use_bf16: bool, use_fp16: bool) -> TrainingArguments:
+            return TrainingArguments(
+                output_dir=output_dir,
+                num_train_epochs=self.config.get("num_epochs", 3),
+                per_device_train_batch_size=self.config.get("batch_size", 4),
+                per_device_eval_batch_size=self.config.get("eval_batch_size", 4),
+                gradient_accumulation_steps=self.config.get("gradient_accumulation_steps", 8),
+                learning_rate=self.config.get("learning_rate", 1e-4),
+                weight_decay=self.config.get("weight_decay", 0.01),
+                warmup_ratio=self.config.get("warmup_ratio", 0.03),
+                lr_scheduler_type=self.config.get("lr_scheduler_type", "cosine"),
+                logging_steps=self.config.get("logging_steps", 50),
+                eval_steps=self.config.get("eval_steps", 500),
+                save_steps=self.config.get("save_steps", 1000),
+                eval_strategy=self.config.get("eval_strategy", "steps"),
+                save_strategy=self.config.get("save_strategy", "steps"),
+                save_total_limit=self.config.get("save_total_limit", 2),
+                load_best_model_at_end=self.config.get("load_best_model_at_end", True),
+                metric_for_best_model=self.config.get("metric_for_best_model", "eval_loss"),
+                greater_is_better=False,
+                fp16=use_fp16,
+                bf16=use_bf16,
+                gradient_checkpointing=self.config.get("gradient_checkpointing", True),
+                remove_unused_columns=False,
+                optim=self.config.get("optim", "adamw_torch_fused"),
+                max_grad_norm=self.config.get("max_grad_norm", 1.0),
+                report_to="wandb" if self.config.get("use_wandb", False) else "none",
+                run_name=self.config.get("run_name", f"skill-lora-{self.skill_name}"),
+                seed=self.config.get("seed", 42),
+                ddp_find_unused_parameters=False,
+                ddp_broadcast_buffers=False,
+                ddp_bucket_cap_mb=5,
+                dataloader_pin_memory=True,
+                dataloader_num_workers=self.config.get("dataloader_num_workers", 0),
+            )
+
+        use_bf16 = self.config.get("bf16", True)
+        use_fp16 = self.config.get("fp16", False)
+        try:
+            training_args = _build_training_args(use_bf16, use_fp16)
+        except ValueError as e:
+            if "bf16" in str(e) and use_bf16:
+                logger.warning(f"bf16 rejected by TrainingArguments: {e}")
+                logger.warning("Falling back to fp16")
+                training_args = _build_training_args(use_bf16=False, use_fp16=True)
+            else:
+                raise
 
         # Callbacks
         callbacks = [MemoryManagementCallback(), ProgressCallback()]
