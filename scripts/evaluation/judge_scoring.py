@@ -57,9 +57,16 @@ def init_judges(
     """
     global _system_prompt, _user_template
 
-    import openai
-
     keys = {"deepseek": deepseek_key, "gemini": gemini_key}
+    if not any(keys.values()):
+        return []
+
+    try:
+        import openai
+    except ModuleNotFoundError:
+        logger.warning("openai package not installed — scoring disabled")
+        return []
+
     active: list[str] = []
 
     for name, cfg in _JUDGE_CONFIGS.items():
