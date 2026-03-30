@@ -51,20 +51,25 @@ SKILL_DEFINITIONS = {
         "source": "datasets/crisis_detection_processed",
         "filter_field": "topic",
         "filter_value": "crisis_support",
+        "max_train_samples": 20000,
     },
     "general-support": {
         "source": "datasets/crisis_detection_processed",
         "filter_field": "topic",
         "filter_value": "general_support",
+        "max_train_samples": 20000,
     },
     "cbt-therapy": {
         "source": "datasets/cactus_processed",
+        "max_train_samples": 20000,
     },
     "empathetic-listening": {
         "source": "datasets/esconv_processed",
+        "max_train_samples": 20000,
     },
     "psychoeducation": {
         "source": "datasets/mentalchat16k_processed",
+        "max_train_samples": 16000,
     },
     "professional-counseling": {
         "sources": [
@@ -72,6 +77,7 @@ SKILL_DEFINITIONS = {
             "datasets/amod_processed",
             "datasets/kaggle_mental_health_nguyen_processed_combined",
         ],
+        "max_train_samples": 20000,
     },
 }
 
@@ -197,6 +203,19 @@ def prepare_skill(skill_name: str, skill_def: dict, output_dir: str) -> bool:
     except (FileNotFoundError, ValueError) as e:
         print(f"    WARNING: {e} — skipping {skill_name}")
         return False
+
+    # Subsample if dataset is larger than max_train_samples
+    max_samples = skill_def.get("max_train_samples")
+    if max_samples and "train" in ds and len(ds["train"]) > max_samples:
+        original = len(ds["train"])
+        ds["train"] = ds["train"].shuffle(seed=42).select(range(max_samples))
+        print(f"    Subsampled train: {original:,} -> {max_samples:,}")
+        # Also subsample validation proportionally
+        if "validation" in ds and len(ds["validation"]) > 0:
+            val_ratio = max_samples / original
+            max_val = max(int(len(ds["validation"]) * val_ratio), 100)
+            if len(ds["validation"]) > max_val:
+                ds["validation"] = ds["validation"].shuffle(seed=42).select(range(max_val))
 
     # Save
     Path(output_path).mkdir(parents=True, exist_ok=True)

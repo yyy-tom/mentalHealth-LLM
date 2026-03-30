@@ -418,10 +418,15 @@ class SkillLoRATrainer:
         )
 
         # Build TrainingArguments — retry with fp16 if bf16 is rejected
+        max_steps = self.config.get("max_steps", -1)
+        if max_steps and max_steps > 0:
+            logger.info(f"Training capped at max_steps={max_steps}")
+
         def _build_training_args(use_bf16: bool, use_fp16: bool) -> TrainingArguments:
             return TrainingArguments(
                 output_dir=output_dir,
                 num_train_epochs=self.config.get("num_epochs", 3),
+                max_steps=max_steps if max_steps and max_steps > 0 else -1,
                 per_device_train_batch_size=self.config.get("batch_size", 4),
                 per_device_eval_batch_size=self.config.get("eval_batch_size", 4),
                 gradient_accumulation_steps=self.config.get("gradient_accumulation_steps", 8),
@@ -579,6 +584,12 @@ def main():
         default=None,
         help="Override gradient accumulation steps (default: 8, use 32 for batch_size=1)",
     )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Max training steps (overrides num_epochs if set). Use to cap training time.",
+    )
     args = parser.parse_args()
 
     # Build default config
@@ -649,6 +660,8 @@ def main():
         config["batch_size"] = args.batch_size
     if args.grad_accum is not None:
         config["gradient_accumulation_steps"] = args.grad_accum
+    if args.max_steps is not None:
+        config["max_steps"] = args.max_steps
 
     # Ensure output dir exists
     out = config["output_dir"]

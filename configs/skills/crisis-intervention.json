@@ -1,5 +1,6 @@
 {
-  "_comment": "LoRA adapter config for crisis-intervention skill (~116K samples, 1 epoch)",
+  "_comment": "LoRA adapter config for crisis-intervention skill (~20K samples, 1 epoch, ~625 steps)",
+  "max_steps": 2000,
   "model_name": "models/qwen2.5-7b-mental-health-fullft-a100",
   "dataset_path": "datasets/skills/crisis-intervention",
   "output_dir": "adapters/crisis-intervention",

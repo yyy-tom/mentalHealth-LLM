@@ -245,21 +245,30 @@ if [ "$SKIP_TRAIN" = true ]; then
     exit 0
 fi
 
-# Pre-flight: verify base model exists
-if [ ! -d "$RESOLVED_MODEL" ]; then
+# Pre-flight: verify base model exists (skip check for HuggingFace model IDs)
+if [[ "$BASE_MODEL" == */* && "$BASE_MODEL" != /* ]]; then
+    # Looks like a HuggingFace model ID (e.g. Qwen/Qwen2.5-7B-Instruct)
+    # Check if it also exists as a local path; if not, assume HF download
+    if [ -d "$RESOLVED_MODEL" ]; then
+        echo "Base model (local): $RESOLVED_MODEL"
+    else
+        echo "Base model (HuggingFace): $BASE_MODEL (will download on first use)"
+        RESOLVED_MODEL="$BASE_MODEL"
+    fi
+elif [ ! -d "$RESOLVED_MODEL" ]; then
     echo ""
     echo "ERROR: Base model not found at: $RESOLVED_MODEL"
     echo ""
-    echo "The base model (qwen2.5-7b-mental-health-fullft-a100) must be available locally."
     echo "Options:"
-    echo "  1. Copy it to the expected path:"
+    echo "  1. Use a HuggingFace model:"
+    echo "       bash $0 --base-model Qwen/Qwen2.5-7B-Instruct"
+    echo "  2. Copy your fine-tuned model:"
     echo "       scp -r local:models/qwen2.5-7b-mental-health-fullft-a100 $PROJECT_DIR/models/"
-    echo "  2. Specify the correct path on this machine:"
-    echo "       bash $0 --base-model /path/to/model"
     echo ""
     exit 1
+else
+    echo "Base model (local): $RESOLVED_MODEL"
 fi
-echo "Base model found: $RESOLVED_MODEL"
 
 echo ""
 echo "========================================================"
