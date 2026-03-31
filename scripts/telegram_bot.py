@@ -301,6 +301,7 @@ default_model_key: str = "qwen-ft"
 user_histories: dict[int, list[tuple[str, str]]] = {}
 user_models: dict[int, str] = {}
 user_languages: dict[int, str | None] = {}
+user_adapters_enabled: dict[int, bool] = {}  # True = adapters on (default)
 
 default_whisper_language: str | None = None
 
@@ -414,6 +415,7 @@ def route_and_generate(
     question: str,
     model_key: str,
     history: list[tuple[str, str]] | None = None,
+    adapters_enabled: bool = True,
 ) -> tuple[str, str]:
     """Route to the best skill, activate adapter if applicable, and generate.
 
@@ -423,17 +425,21 @@ def route_and_generate(
 
     mdl, tok, loaded_skills = model_manager.get(model_key)
 
-    # Activate LoRA adapter only for qwen-ft with loaded adapters
+    # Activate or disable LoRA adapters based on user preference
     if loaded_skills:
-        if skill_name in loaded_skills:
-            mdl.set_adapter(skill_name)
+        if adapters_enabled:
+            mdl.enable_adapter_layers()
+            if skill_name in loaded_skills:
+                mdl.set_adapter(skill_name)
+            else:
+                fallback = (
+                    "general-support"
+                    if "general-support" in loaded_skills
+                    else loaded_skills[0]
+                )
+                mdl.set_adapter(fallback)
         else:
-            fallback = (
-                "general-support"
-                if "general-support" in loaded_skills
-                else loaded_skills[0]
-            )
-            mdl.set_adapter(fallback)
+            mdl.disable_adapter_layers()
 
     system_prompt = skill_router.get_system_prompt(skill_name)
     try:
@@ -441,6 +447,10 @@ def route_and_generate(
     except Exception:
         logger.exception("Generation failed for model=%s skill=%s", model_key, skill_name)
         raise
+    finally:
+        # Always re-enable adapters so other users aren't affected
+        if loaded_skills and not adapters_enabled:
+            mdl.enable_adapter_layers()
     return response, skill_name
 
 
@@ -509,6 +519,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Mandarin (普通話).\n\n"
         "Commands:\n"
         "/model - Switch between AI models\n"
+        "/adapters - Toggle LoRA adapters on/off\n"
         "/language - Set voice transcription language\n"
         "/score - View conversation quality scores\n"
         "/clear - Reset our conversation history\n\n"
@@ -623,8 +634,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     try:
+        adapters_on = user_adapters_enabled.get(user_id, True)
         response, skill_name = await asyncio.to_thread(
-            route_and_generate, user_text, model_key, history
+            route_and_generate, user_text, model_key, history, adapters_on
         )
     except Exception:
         logger.exception("handle_message: generation error for user %s model %s", user_id, model_key)
@@ -693,8 +705,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await context.bot.send_chat_action(
                 chat_id=update.effective_chat.id, action=ChatAction.TYPING
             )
+            adapters_on = user_adapters_enabled.get(user_id, True)
             resp, skill_name = await asyncio.to_thread(
-                route_and_generate, transcript, model_key, history
+                route_and_generate, transcript, model_key, history, adapters_on
             )
             logger.info("User %s [%s] (voice) routed to [%s]", user_id, model_key, skill_name)
             if not resp or not resp.strip():
@@ -741,6 +754,37 @@ async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     report = format_score_report(scores, total, pending)
     await update.message.reply_text(report)
+
+
+async def adapters_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /adapters command — toggle LoRA adapters on/off for the current user."""
+    user_id = update.effective_user.id
+    model_key = user_models.get(user_id, default_model_key)
+
+    # Check if the current model even has adapters
+    if model_manager.is_loaded(model_key):
+        _, _, loaded_skills = model_manager.get(model_key)
+    else:
+        loaded_skills = []
+
+    if not loaded_skills:
+        await update.message.reply_text(
+            f"No LoRA adapters are loaded for {model_manager.display_name(model_key)}.\n"
+            "Adapters are only available for the Qwen fine-tuned model."
+        )
+        return
+
+    current = user_adapters_enabled.get(user_id, True)
+    new_state = not current
+    user_adapters_enabled[user_id] = new_state
+    state_label = "ON" if new_state else "OFF"
+
+    await update.message.reply_text(
+        f"LoRA adapters: {state_label}\n\n"
+        f"{'Skill-specific adapters will be used for responses.' if new_state else 'Adapters disabled — using base fine-tuned weights only.'}\n\n"
+        "Use /adapters again to toggle."
+    )
+    logger.info("User %s set adapters=%s for model=%s", user_id, state_label, model_key)
 
 
 # ── Main ────────────────────────────────────────────────────────────
@@ -845,6 +889,7 @@ def main() -> None:
     app.add_handler(CommandHandler("model", model_command))
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("score", score_command))
+    app.add_handler(CommandHandler("adapters", adapters_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
