@@ -70,12 +70,23 @@ def init_judges(
     active: list[str] = []
 
     for name, cfg in _JUDGE_CONFIGS.items():
-        api_key = keys.get(name)
-        if not api_key:
+        credential = keys.get(name)
+        if not credential:
             continue
-        client = openai.OpenAI(api_key=api_key, base_url=cfg["base_url"])
+        client = openai.OpenAI(api_key=credential, base_url=cfg["base_url"])
+        # Smoke-test: verify connectivity and geo-availability
+        try:
+            client.chat.completions.create(
+                model=cfg["model"],
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=1,
+            )
+        except Exception as e:
+            logger.warning("Judge %s unavailable, skipping: %s", name, e)
+            continue
         _judge_clients[name] = {"client": client, "model": cfg["model"]}
         active.append(name)
+        logger.info("Judge %s ready (model=%s)", name, cfg["model"])
 
     if active:
         _system_prompt, _user_template = load_judge_prompt(prompt_path)

@@ -326,6 +326,18 @@ _LANGUAGE_TO_WHISPER: dict[str, str] = {
 # ── Generation ────────────────────────────────────────────────────
 
 
+def _supports_system_role(tok) -> bool:
+    """Check whether the tokenizer's chat template supports a system role."""
+    try:
+        tok.apply_chat_template(
+            [{"role": "system", "content": "test"}, {"role": "user", "content": "hi"}],
+            tokenize=False,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def generate_response(
     question: str,
     system_prompt: str,
@@ -335,14 +347,27 @@ def generate_response(
     max_length: int = 1024,
 ) -> str:
     """Generate a counseling response using the given system prompt and model."""
-    messages = [{"role": "system", "content": system_prompt}]
+    use_system_role = _supports_system_role(tok)
+
+    if use_system_role:
+        messages = [{"role": "system", "content": system_prompt}]
+    else:
+        # Models like Gemma that don't support system role:
+        # prepend the system prompt into the first user message.
+        messages = []
 
     if history:
-        for user_turn, counselor_turn in history:
-            messages.append({"role": "user", "content": user_turn})
+        for i, (user_turn, counselor_turn) in enumerate(history):
+            content = user_turn
+            if not use_system_role and i == 0:
+                content = f"{system_prompt}\n\n{user_turn}"
+            messages.append({"role": "user", "content": content})
             messages.append({"role": "assistant", "content": counselor_turn})
 
-    messages.append({"role": "user", "content": question})
+    user_content = question
+    if not use_system_role and not history:
+        user_content = f"{system_prompt}\n\n{question}"
+    messages.append({"role": "user", "content": user_content})
 
     prompt = tok.apply_chat_template(
         messages, add_generation_prompt=True, tokenize=False
@@ -411,7 +436,11 @@ def route_and_generate(
             mdl.set_adapter(fallback)
 
     system_prompt = skill_router.get_system_prompt(skill_name)
-    response = generate_response(question, system_prompt, mdl, tok, history)
+    try:
+        response = generate_response(question, system_prompt, mdl, tok, history)
+    except Exception:
+        logger.exception("Generation failed for model=%s skill=%s", model_key, skill_name)
+        raise
     return response, skill_name
 
 
@@ -593,9 +622,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         chat_id=update.effective_chat.id, action=ChatAction.TYPING
     )
 
-    response, skill_name = await asyncio.to_thread(
-        route_and_generate, user_text, model_key, history
-    )
+    try:
+        response, skill_name = await asyncio.to_thread(
+            route_and_generate, user_text, model_key, history
+        )
+    except Exception:
+        logger.exception("handle_message: generation error for user %s model %s", user_id, model_key)
+        await update.message.reply_text(
+            "Sorry, something went wrong generating a response. "
+            "Please try again or switch models with /model."
+        )
+        return
+
     logger.info("User %s [%s] routed to [%s]", user_id, model_key, skill_name)
 
     if not response or not response.strip():
