@@ -211,9 +211,9 @@ def format_score_report(
     for dim in DIMENSIONS:
         label = DIMENSION_LABELS.get(dim, dim)
         val = agg.get(dim, 0.0)
-        lines.append(f"{label:<26} {val:>4.1f} / 5")
+        lines.append(f"{label:<26} {val:>4.1f} / 2")
     lines.append("-" * 38)
-    lines.append(f"{'Overall':<26} {agg['overall']:>4.1f} / 5\n")
+    lines.append(f"{'Overall':<26} {agg['overall']:>4.1f} / 2\n")
 
     judge_str = ", ".join(n.capitalize() for n in agg.get("judge_names", []))
     lines.append(f"Judges: {judge_str}")
