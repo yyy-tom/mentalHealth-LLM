@@ -70,6 +70,8 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from mental_health_llm.skill_router import SkillRouter
 from mental_health_llm.session_outcome import SessionOutcome, OutcomeLogger, format_stats_report
 from mental_health_llm.streaming import send_streaming_response
+from mental_health_llm.session_store import SQLiteSessionStore
+from mental_health_llm.adapter_cache import AdapterCache
 
 sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
 from evaluation.judge_scoring import (
@@ -299,7 +301,10 @@ whisper_model = None
 skill_router: SkillRouter | None = None
 default_model_key: str = "qwen-ft"
 
-# Per-user state
+# Session persistence (SQLite-backed, replaces in-memory user_histories)
+session_store: SQLiteSessionStore | None = None
+
+# Per-user state (in-memory fallback when session_store is None)
 user_histories: dict[int, list[tuple[str, str]]] = {}
 user_models: dict[int, str] = {}
 user_languages: dict[int, str | None] = {}
@@ -307,6 +312,48 @@ user_adapters_enabled: dict[int, bool] = {}  # True = adapters on (default)
 user_streaming_enabled: dict[int, bool] = {}  # True = streaming on
 
 default_whisper_language: str | None = None
+
+
+def _get_history(user_id: int) -> list[tuple[str, str]]:
+    """Get conversation history — from session store if available, else in-memory."""
+    if session_store is not None:
+        return session_store.restore_history(user_id)
+    return user_histories.get(user_id, [])
+
+
+def _save_turn(
+    user_id: int,
+    user_msg: str,
+    assistant_msg: str,
+    *,
+    skill: str = "",
+    is_crisis: bool = False,
+) -> None:
+    """Save a conversation turn to session store + in-memory cache."""
+    model_key = user_models.get(user_id, default_model_key)
+    if session_store is not None:
+        session_store.save_turn(
+            user_id=user_id,
+            user_msg=user_msg,
+            assistant_msg=assistant_msg,
+            skill=skill,
+            is_crisis=is_crisis,
+            model_key=model_key,
+        )
+    # Also maintain in-memory cache for the current process
+    history = user_histories.get(user_id, [])
+    history.append((user_msg, assistant_msg))
+    if len(history) > HISTORY_LIMIT:
+        history.pop(0)
+    user_histories[user_id] = history
+
+
+def _clear_history(user_id: int) -> None:
+    """Clear conversation history from both stores."""
+    if session_store is not None:
+        session_store.delete_session(user_id)
+    user_histories.pop(user_id, None)
+
 
 # Per-user scoring state
 user_scores: dict[int, list[dict]] = {}
@@ -510,7 +557,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = update.effective_user.id
 
     # Log session outcome if there was an active session
-    prev_history = user_histories.get(user_id)
+    prev_history = _get_history(user_id)
     if prev_history and outcome_logger:
         model_key = user_models.get(user_id, default_model_key)
         outcome_logger.log(
@@ -520,7 +567,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             turns=len(prev_history),
         )
 
-    user_histories.pop(user_id, None)
+    _clear_history(user_id)
     user_scores.pop(user_id, None)
     user_pending_scores.pop(user_id, None)
 
@@ -552,7 +599,7 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = update.effective_user.id
 
     # Log session outcome if there was an active session
-    prev_history = user_histories.get(user_id)
+    prev_history = _get_history(user_id)
     if prev_history and outcome_logger:
         model_key = user_models.get(user_id, default_model_key)
         outcome_logger.log(
@@ -562,7 +609,7 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             turns=len(prev_history),
         )
 
-    user_histories.pop(user_id, None)
+    _clear_history(user_id)
     user_scores.pop(user_id, None)
     user_pending_scores.pop(user_id, None)
     await update.message.reply_text("Conversation history cleared. Let's start fresh.")
@@ -616,7 +663,7 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await asyncio.to_thread(model_manager.get, model_key)
 
     user_models[user_id] = model_key
-    user_histories.pop(user_id, None)  # Clear history on model switch
+    _clear_history(user_id)  # Clear history on model switch
 
     await query.edit_message_text(
         f"Switched to {model_manager.display_name(model_key)}.\n"
@@ -658,7 +705,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_text = update.message.text
     model_key = user_models.get(user_id, default_model_key)
 
-    history = user_histories.get(user_id, [])
+    history = _get_history(user_id)
     history_snapshot = list(history)
     use_streaming = user_streaming_enabled.get(user_id, False)
 
@@ -736,10 +783,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "Could you tell me more about what's on your mind?"
         )
 
-    history.append((user_text, response))
-    if len(history) > HISTORY_LIMIT:
-        history.pop(0)
-    user_histories[user_id] = history
+    is_crisis = skill_name == "crisis-intervention"
+    _save_turn(user_id, user_text, response, skill=skill_name, is_crisis=is_crisis)
 
     # Only send reply for non-streaming path (streaming already sent it)
     if not use_streaming:
@@ -782,7 +827,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
 
-        history = user_histories.get(user_id, [])
+        history = _get_history(user_id)
         history_snapshot = list(history)
 
         async def generate_and_reply() -> str:
@@ -808,10 +853,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             generate_and_reply(),
         )
 
-        history.append((transcript, response))
-        if len(history) > HISTORY_LIMIT:
-            history.pop(0)
-        user_histories[user_id] = history
+        _save_turn(user_id, transcript, response)
 
         if _judges_active:
             asyncio.create_task(
@@ -828,7 +870,7 @@ async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = update.effective_user.id
     scores = user_scores.get(user_id, [])
     pending = user_pending_scores.get(user_id, 0)
-    total = len(user_histories.get(user_id, []))
+    total = len(_get_history(user_id))
 
     if not _judges_active:
         await update.message.reply_text(
@@ -959,6 +1001,12 @@ def main() -> None:
         default=None,
         help="Force whisper language code, e.g. 'yue' for Cantonese (default: auto-detect)",
     )
+    parser.add_argument(
+        "--session-db",
+        type=str,
+        default=None,
+        help="SQLite database path for session persistence (enables session resumption on restart)",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -985,6 +1033,17 @@ def main() -> None:
 
     global default_whisper_language
     default_whisper_language = args.whisper_language
+
+    # Initialise session persistence
+    global session_store
+    if args.session_db:
+        session_store = SQLiteSessionStore(db_path=args.session_db)
+        print(f"Session persistence enabled: {args.session_db}")
+    else:
+        # Default location
+        default_db = str(_PROJECT_ROOT / "data" / "sessions.db")
+        session_store = SQLiteSessionStore(db_path=default_db)
+        print(f"Session persistence enabled: {default_db}")
 
     # Initialise session outcome logger
     global outcome_logger
