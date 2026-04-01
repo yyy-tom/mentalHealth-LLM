@@ -68,6 +68,11 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from mental_health_llm.skill_router import SkillRouter
+from mental_health_llm.compaction import ConversationCompactor
+from mental_health_llm.response_guard import ResponseGuard
+from mental_health_llm.prompt_builder import TherapyPromptBuilder
+from mental_health_llm.adapter_cache import AdapterCache
+from mental_health_llm.session_store import SQLiteSessionStore
 
 # ---------------------------------------------------------------------------
 # Skill adapter definitions
@@ -85,26 +90,20 @@ DEFAULT_BASE_MODEL = "models/qwen2.5-7b-mental-health-fullft-a100"
 DEFAULT_ADAPTERS_DIR = "adapters"
 
 
-def load_model_with_adapters(
+def load_base_model(
     base_model_path: str,
-    adapters_dir: str,
     use_4bit: bool = True,
 ) -> tuple:
-    """
-    Load the base model and all skill adapters.
+    """Load the base model and tokenizer (without adapters).
 
     Returns:
-        (model, tokenizer, loaded_skills) where loaded_skills is a list of
-        skill names that were successfully loaded.
+        (model, tokenizer)
     """
     # Resolve paths
     if not os.path.isabs(base_model_path):
         resolved = PROJECT_ROOT / base_model_path
         if resolved.exists():
             base_model_path = str(resolved)
-
-    if not os.path.isabs(adapters_dir):
-        adapters_dir = str(PROJECT_ROOT / adapters_dir)
 
     print(f"Loading base model: {base_model_path}")
 
@@ -133,7 +132,49 @@ def load_model_with_adapters(
         trust_remote_code=True,
     )
 
-    # Load adapters
+    return model, tokenizer
+
+
+def load_model_with_adapters(
+    base_model_path: str,
+    adapters_dir: str,
+    use_4bit: bool = True,
+    *,
+    lazy: bool = False,
+    max_cached: int = 3,
+) -> tuple:
+    """Load the base model and skill adapters (eager or lazy).
+
+    Args:
+        base_model_path: Path to the base model.
+        adapters_dir: Directory containing adapter subdirectories.
+        use_4bit: Enable 4-bit quantization.
+        lazy: If True, use AdapterCache for lazy LRU loading instead of
+              loading all adapters at startup.
+        max_cached: Maximum adapters in cache (only used when lazy=True).
+
+    Returns:
+        If lazy=False (default): ``(model, tokenizer, loaded_skills)``
+        If lazy=True: ``(adapter_cache, tokenizer, [])`` — adapters are
+        loaded on demand via ``adapter_cache.ensure_loaded(skill)``.
+    """
+    model, tokenizer = load_base_model(base_model_path, use_4bit)
+
+    if not os.path.isabs(adapters_dir):
+        adapters_dir = str(PROJECT_ROOT / adapters_dir)
+
+    if lazy:
+        cache = AdapterCache(
+            max_size=max_cached,
+            adapters_dir=adapters_dir,
+        )
+        cache.attach(model)
+        # Pre-load the crisis adapter so it's always available
+        cache.preload_pinned()
+        print(f"Adapter cache initialized (max={max_cached}, pinned=crisis-intervention)")
+        return cache, tokenizer, cache.loaded_skills
+
+    # --- Eager loading (original behaviour) ---
     loaded_skills = []
     first_adapter = True
 
@@ -143,7 +184,6 @@ def load_model_with_adapters(
             print(f"  Adapter not found: {adapter_path} — skipping {skill_name}")
             continue
 
-        # Check for adapter files
         has_adapter = (
             os.path.exists(os.path.join(adapter_path, "adapter_config.json"))
             or os.path.exists(os.path.join(adapter_path, "adapter_model.safetensors"))
@@ -297,45 +337,130 @@ def main():
         default=None,
         help="Path to skills_config.json for the router",
     )
+    parser.add_argument(
+        "--lazy",
+        action="store_true",
+        help="Enable lazy adapter loading with LRU cache (max 3 adapters)",
+    )
+    parser.add_argument(
+        "--max-cached",
+        type=int,
+        default=3,
+        help="Maximum adapters in LRU cache (default: 3, used with --lazy)",
+    )
+    parser.add_argument(
+        "--session-db",
+        type=str,
+        default=None,
+        help="SQLite database path for session persistence (default: no persistence)",
+    )
     args = parser.parse_args()
 
     # Load router
     router = SkillRouter(config_path=args.router_config)
     print(f"Router loaded with {len(router.list_skills())} skills")
 
+    # Initialize compaction, guard, and prompt builder
+    compactor = ConversationCompactor(max_tokens=768, trigger_threshold=600, preserve_recent=4)
+    guard = ResponseGuard()
+    prompt_builder = TherapyPromptBuilder(config_path=args.router_config)
+
     # Load model + adapters
     use_4bit = not args.no_4bit
-    model, tokenizer, loaded_skills = load_model_with_adapters(
-        args.base_model, args.adapters_dir, use_4bit=use_4bit
+    result = load_model_with_adapters(
+        args.base_model, args.adapters_dir, use_4bit=use_4bit,
+        lazy=args.lazy, max_cached=args.max_cached,
     )
-    _set_eval_mode(model)
 
-    print(f"\nLoaded {len(loaded_skills)} adapters: {', '.join(loaded_skills)}")
-    has_adapters = len(loaded_skills) > 0
+    adapter_cache = None
+    if args.lazy:
+        adapter_cache, tokenizer, loaded_skills = result
+        model = adapter_cache.model
+        _set_eval_mode(model)
+        print(f"\nLazy adapter cache active (max {args.max_cached})")
+    else:
+        model, tokenizer, loaded_skills = result
+        _set_eval_mode(model)
+        print(f"\nLoaded {len(loaded_skills)} adapters: {', '.join(loaded_skills)}")
 
-    def respond(question: str, history: list = None, force_skill: str = None) -> tuple:
+    has_adapters = len(loaded_skills) > 0 or adapter_cache is not None
+
+    # Initialize session store if requested
+    session_store = None
+    if args.session_db:
+        session_store = SQLiteSessionStore(db_path=args.session_db)
+        print(f"Session persistence enabled: {args.session_db}")
+
+    def respond(
+        question: str,
+        history: list = None,
+        force_skill: str = None,
+        compacted=None,
+        crisis_turn_indices: set = None,
+    ) -> tuple:
         """Route, activate adapter, and generate response. Returns (response, skill_name)."""
+        nonlocal model  # model ref may change when adapter_cache wraps it
+
         if force_skill:
             skill_name = force_skill
         else:
             skill_name = router.route(question, history=history)
 
-        # Activate adapter if available
-        if has_adapters and skill_name in loaded_skills:
+        # Activate adapter — lazy or eager
+        if adapter_cache is not None:
+            if adapter_cache.ensure_loaded(skill_name):
+                model = adapter_cache.model
+                model.set_adapter(skill_name)
+            elif adapter_cache.loaded_skills:
+                fallback = (
+                    "general-support"
+                    if "general-support" in adapter_cache.loaded_skills
+                    else adapter_cache.loaded_skills[0]
+                )
+                model = adapter_cache.model
+                model.set_adapter(fallback)
+                if skill_name != fallback:
+                    print(f"  (adapter '{skill_name}' not available, falling back to '{fallback}')")
+        elif has_adapters and skill_name in loaded_skills:
             model.set_adapter(skill_name)
         elif has_adapters and loaded_skills:
-            # Fall back to general-support or first loaded adapter
             fallback = "general-support" if "general-support" in loaded_skills else loaded_skills[0]
             model.set_adapter(fallback)
             if skill_name != fallback:
                 print(f"  (adapter '{skill_name}' not loaded, falling back to '{fallback}')")
 
-        system_prompt = router.get_system_prompt(skill_name)
+        # Determine crisis level for prompt building
+        crisis_level = "none"
+        if skill_name == "crisis-intervention":
+            crisis_level = "high"
+
+        # Build dynamic system prompt
+        session_summary = ""
+        if compacted and compacted.was_compacted:
+            session_summary = compacted.summary
+
+        system_prompt = (
+            prompt_builder
+            .with_skill(skill_name)
+            .with_crisis_context(crisis_level)
+            .with_user_profile(region="HK")
+            .with_session_summary(session_summary)
+            .build()
+        )
+
+        # Use compacted history if available
+        gen_history = compacted.to_history_pairs() if compacted else history
+
         response = generate_response(
             model, tokenizer, question,
             system_prompt=system_prompt,
-            history=history,
+            history=gen_history,
         )
+
+        # Post-generation guard
+        guard_result = guard.validate(response, skill=skill_name, crisis_level=crisis_level)
+        response = guard_result.response
+
         return response, skill_name
 
     # ---------- Interactive mode ----------
@@ -345,8 +470,22 @@ def main():
         print("Type 'quit' to exit, '/skill' to see current routing")
         print("=" * 60)
 
+        # Restore session from persistence if available
+        user_id = 0  # single-user CLI session
         conversation_history = []
-        history_limit = 6
+        crisis_turn_indices: set[int] = set()
+        compacted = None
+
+        if session_store:
+            session = session_store.load_session(user_id)
+            if session:
+                conversation_history = [tuple(p) for p in session["messages"]]
+                crisis_turn_indices = set(session["crisis_flags"])
+                print(f"Restored session: {len(conversation_history)} turns")
+                if crisis_turn_indices:
+                    print(f"  Crisis turns: {crisis_turn_indices}")
+            else:
+                print("No previous session found — starting fresh.")
 
         while True:
             try:
@@ -382,13 +521,29 @@ def main():
                 question,
                 history=conversation_history,
                 force_skill=args.force_skill,
+                compacted=compacted,
+                crisis_turn_indices=crisis_turn_indices,
             )
             print(f"\nCounselor: {response}")
             print("-" * 50)
 
             conversation_history.append((question, response))
-            if len(conversation_history) > history_limit:
-                conversation_history.pop(0)
+            is_crisis = skill_name == "crisis-intervention"
+            if is_crisis:
+                crisis_turn_indices.add(len(conversation_history) - 1)
+
+            # Persist turn
+            if session_store:
+                session_store.save_turn(
+                    user_id=user_id,
+                    user_msg=question,
+                    assistant_msg=response,
+                    skill=skill_name,
+                    is_crisis=is_crisis,
+                )
+
+            # Compact instead of hard-drop
+            compacted = compactor.compact(conversation_history, crisis_turn_indices)
 
     # ---------- Single question ----------
     elif args.question:
