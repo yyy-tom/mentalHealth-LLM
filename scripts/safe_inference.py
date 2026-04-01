@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 _LARGE_DISK_PATH = Path(os.environ.get("HF_LARGE_DISK_PATH", "/research/d7/fyp25/yyyu2"))
@@ -59,8 +59,16 @@ from datetime import datetime
 from typing import List, Tuple, Optional
 
 # Import safety modules
-from scripts.safety.crisis_detector import CrisisDetector, CrisisLevel
-from scripts.safety.crisis_responses import CrisisResponseGenerator
+try:
+    from scripts.safety.crisis_detector import CrisisDetector, CrisisLevel
+    from scripts.safety.crisis_responses import CrisisResponseGenerator
+    _HAS_SAFETY_MODULES = True
+except ImportError:
+    _HAS_SAFETY_MODULES = False
+
+from mental_health_llm.compaction import ConversationCompactor
+from mental_health_llm.response_guard import ResponseGuard
+from mental_health_llm.prompt_builder import TherapyPromptBuilder
 
 
 class SafeInferenceSystem:
@@ -84,9 +92,18 @@ class SafeInferenceSystem:
     ):
         self.model = model
         self.tokenizer = tokenizer
-        self.crisis_detector = CrisisDetector()
-        self.response_generator = CrisisResponseGenerator()
+        if _HAS_SAFETY_MODULES:
+            self.crisis_detector = CrisisDetector()
+            self.response_generator = CrisisResponseGenerator()
+        else:
+            self.crisis_detector = None
+            self.response_generator = None
         self.country = country
+
+        # New modules
+        self.compactor = ConversationCompactor(max_tokens=768, trigger_threshold=600, preserve_recent=4)
+        self.guard = ResponseGuard()
+        self.prompt_builder = TherapyPromptBuilder()
 
         # Set up logging
         log_path = Path(log_dir)
@@ -139,7 +156,8 @@ class SafeInferenceSystem:
         self,
         user_input: str,
         history: Optional[List[Tuple[str, str]]] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        compacted=None,
     ) -> Tuple[str, bool]:
         """
         Generate a safe response with crisis detection.
@@ -148,106 +166,126 @@ class SafeInferenceSystem:
             user_input: User's message
             history: Conversation history as list of (user, assistant) tuples
             session_id: Optional session identifier for logging
+            compacted: Optional CompactedHistory from ConversationCompactor
 
         Returns:
             Tuple of (response_text, is_crisis_response)
         """
-        # Step 1: Detect crisis in current input
-        crisis_level, details = self.crisis_detector.detect(user_input)
+        crisis_level_str = "none"
 
-        # Step 2: Check conversation history for escalation patterns
-        if history:
-            user_messages = [user_input] + [h[0] for h in history[-5:]]  # Last 5 + current
-            conv_level, conv_details = self.crisis_detector.detect_in_conversation(
-                user_messages
-            )
+        if self.crisis_detector is not None:
+            # Step 1: Detect crisis in current input
+            crisis_level, details = self.crisis_detector.detect(user_input)
 
-            # Use higher of the two levels
-            if conv_level.value > crisis_level.value:
-                crisis_level = conv_level
-                details = conv_details
-                logging.info(f"Escalation detected in conversation history: {conv_level.name}")
-
-        # Step 3: Handle crisis appropriately
-        if crisis_level == CrisisLevel.IMMEDIATE:
-            response = self.response_generator.get_immediate_response(self.country)
-            self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
-            return response, True
-
-        elif crisis_level == CrisisLevel.HIGH:
-            response = self.response_generator.get_high_risk_response(self.country)
-            self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
-            return response, True
-
-        elif crisis_level == CrisisLevel.MEDIUM:
-            response = self.response_generator.get_medium_risk_response(self.country)
-            self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
-            return response, True
-
-        elif crisis_level == CrisisLevel.LOW:
-            # For low risk, prepend resources but also generate model response
-            resources = self.response_generator.get_low_risk_response()
-            model_response = self._generate_model_response(user_input, history)
-            response = resources + "\n\n---\n\n" + model_response
-            return response, True
-
-        else:
-            # Normal case - generate model response
-            model_response = self._generate_model_response(user_input, history)
-
-            # Double-check generated response for crisis content
-            model_crisis_level, _ = self.crisis_detector.detect(model_response)
-            if model_crisis_level.value >= CrisisLevel.MEDIUM.value:
-                logging.error(
-                    f"Model generated concerning content (level: {model_crisis_level.name}). "
-                    f"Overriding with safe response."
+            # Step 2: Check conversation history for escalation patterns
+            if history:
+                user_messages = [user_input] + [h[0] for h in history[-5:]]
+                conv_level, conv_details = self.crisis_detector.detect_in_conversation(
+                    user_messages
                 )
-                response = self.response_generator.get_medium_risk_response(self.country)
+                if conv_level.value > crisis_level.value:
+                    crisis_level = conv_level
+                    details = conv_details
+                    logging.info(f"Escalation detected in conversation history: {conv_level.name}")
+
+            # Step 3: Handle crisis appropriately
+            if crisis_level == CrisisLevel.IMMEDIATE:
+                response = self.response_generator.get_immediate_response(self.country)
+                self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
                 return response, True
 
-            return model_response, False
+            elif crisis_level == CrisisLevel.HIGH:
+                response = self.response_generator.get_high_risk_response(self.country)
+                self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
+                return response, True
+
+            elif crisis_level == CrisisLevel.MEDIUM:
+                response = self.response_generator.get_medium_risk_response(self.country)
+                self.log_crisis_interaction(user_input, crisis_level, details, response, session_id)
+                return response, True
+
+            elif crisis_level == CrisisLevel.LOW:
+                resources = self.response_generator.get_low_risk_response()
+                model_response = self._generate_model_response(
+                    user_input, history, compacted=compacted, crisis_level_str="low"
+                )
+                response = resources + "\n\n---\n\n" + model_response
+                return response, True
+
+            crisis_level_str = crisis_level.name.lower()
+
+        # Normal case - generate model response
+        session_summary = ""
+        if compacted and compacted.was_compacted:
+            session_summary = compacted.summary
+
+        model_response = self._generate_model_response(
+            user_input, history, compacted=compacted, crisis_level_str=crisis_level_str,
+            session_summary=session_summary,
+        )
+
+        # Post-generation guard (replaces the old crisis-keyword-in-output check)
+        guard_result = self.guard.validate(
+            model_response, skill="general-support", crisis_level=crisis_level_str
+        )
+        if guard_result.action == "blocked":
+            if self.response_generator is not None:
+                response = self.response_generator.get_medium_risk_response(self.country)
+            else:
+                response = guard_result.response
+            return response, True
+        elif guard_result.action == "modified":
+            model_response = guard_result.response
+
+        return model_response, False
 
     def _generate_model_response(
         self,
         question: str,
-        history: Optional[List[Tuple[str, str]]] = None
+        history: Optional[List[Tuple[str, str]]] = None,
+        compacted=None,
+        crisis_level_str: str = "none",
+        session_summary: str = "",
     ) -> str:
-        """Generate response using the fine-tuned model."""
-        history_block = ""
-        if history:
-            history_lines = []
-            for user_turn, counselor_turn in history[-3:]:  # Last 3 turns
-                history_lines.append(f"User: {user_turn}")
-                history_lines.append(f"Counselor: {counselor_turn}")
-            history_block = "\n".join(history_lines).strip()
-            if history_block:
-                history_block += "\n\n"
+        """Generate response using the fine-tuned model with dynamic prompt."""
+        # Build dynamic system prompt via TherapyPromptBuilder
+        system_prompt = (
+            self.prompt_builder
+            .with_skill("general-support")
+            .with_crisis_context(crisis_level_str)
+            .with_user_profile(region=self.country)
+            .with_session_summary(session_summary)
+            .build()
+        )
 
-        # Enhanced prompt with safety instructions
-        prompt = f"""{history_block}You are a compassionate and professional mental health counselor. Please provide helpful, empathetic, and evidence-based advice.
+        # Build messages in Qwen chat template format
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
 
-IMPORTANT SAFETY GUIDELINES:
-- If someone expresses suicidal thoughts, ALWAYS encourage them to contact 988 or emergency services
-- Never minimize serious mental health concerns
-- Always suggest professional help for concerning situations
-- Maintain appropriate boundaries
+        # Use compacted history if available, otherwise raw history
+        if compacted:
+            gen_history = compacted.to_history_pairs()
+        elif history:
+            gen_history = history[-3:]
+        else:
+            gen_history = []
 
-Question: {question}
+        for user_msg, assistant_msg in gen_history:
+            messages.append({"role": "user", "content": user_msg})
+            messages.append({"role": "assistant", "content": assistant_msg})
 
-Please provide a thoughtful and supportive response that:
-1. Acknowledges the person's feelings with empathy
-2. Offers practical, evidence-based advice
-3. Suggests professional resources when appropriate
-4. Maintains a warm, non-judgmental, and professional tone
+        messages.append({"role": "user", "content": question})
 
-Response:"""
+        text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
 
         inputs = self.tokenizer(
-            prompt,
+            text,
             return_tensors="pt",
             truncation=True,
-            max_length=1024,
-            truncation_side="left"
+            max_length=2048,
         )
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
@@ -265,8 +303,11 @@ Response:"""
                 no_repeat_ngram_size=3,
             )
 
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        response = response[len(prompt):].strip()
+        # Decode only the generated tokens
+        response = self.tokenizer.decode(
+            outputs[0][inputs["input_ids"].shape[1]:],
+            skip_special_tokens=True,
+        )
 
         # Clean up response
         stop_patterns = [
@@ -279,7 +320,7 @@ Response:"""
                 response = response.split(pattern)[0].strip()
                 break
 
-        return response
+        return response.strip()
 
 
 def load_model_and_tokenizer(model_path: str, base_model: str = "Qwen/Qwen2.5-1.5B-Instruct"):
@@ -363,10 +404,11 @@ def main():
     )
 
     # Show disclaimer
-    print(safe_system.response_generator.get_system_disclaimer())
+    if safe_system.response_generator is not None:
+        print(safe_system.response_generator.get_system_disclaimer())
 
     if not args.interactive and not args.question:
-        print("\n⚠️  Please provide --question or use --interactive mode")
+        print("\n  Please provide --question or use --interactive mode")
         return
 
     if args.interactive:
@@ -374,10 +416,12 @@ def main():
         print("INTERACTIVE MODE")
         print("Type 'quit' to exit")
         print("=" * 70)
-        print(safe_system.response_generator.get_footer_banner())
+        if safe_system.response_generator is not None:
+            print(safe_system.response_generator.get_footer_banner())
 
         conversation_history: List[Tuple[str, str]] = []
-        history_limit = 5
+        crisis_turn_indices: set = set()
+        compacted = None
         session_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
         while True:
@@ -398,20 +442,25 @@ def main():
             response, is_crisis = safe_system.generate_safe_response(
                 question,
                 history=conversation_history,
-                session_id=session_id
+                session_id=session_id,
+                compacted=compacted,
             )
 
             print(f"\nCounselor: {response}")
 
             if is_crisis:
-                print("\n⚠️  Crisis resources provided above")
+                print("\n  Crisis resources provided above")
 
-            print(safe_system.response_generator.get_footer_banner())
+            if safe_system.response_generator is not None:
+                print(safe_system.response_generator.get_footer_banner())
 
-            # Update history
+            # Update history with compaction instead of hard-drop
             conversation_history.append((question, response))
-            if len(conversation_history) > history_limit:
-                conversation_history.pop(0)
+            if is_crisis:
+                crisis_turn_indices.add(len(conversation_history) - 1)
+            compacted = safe_system.compactor.compact(
+                conversation_history, crisis_turn_indices
+            )
 
     elif args.question:
         print(f"\nQuestion: {args.question}")
