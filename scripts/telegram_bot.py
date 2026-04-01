@@ -68,6 +68,8 @@ _PROJECT_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from mental_health_llm.skill_router import SkillRouter
+from mental_health_llm.session_outcome import SessionOutcome, OutcomeLogger, format_stats_report
+from mental_health_llm.streaming import send_streaming_response
 
 sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
 from evaluation.judge_scoring import (
@@ -302,6 +304,7 @@ user_histories: dict[int, list[tuple[str, str]]] = {}
 user_models: dict[int, str] = {}
 user_languages: dict[int, str | None] = {}
 user_adapters_enabled: dict[int, bool] = {}  # True = adapters on (default)
+user_streaming_enabled: dict[int, bool] = {}  # True = streaming on
 
 default_whisper_language: str | None = None
 
@@ -309,6 +312,9 @@ default_whisper_language: str | None = None
 user_scores: dict[int, list[dict]] = {}
 user_pending_scores: dict[int, int] = {}
 _judges_active = False
+
+# Session outcome logger
+outcome_logger: OutcomeLogger | None = None
 
 LANGUAGE_OPTIONS: dict[str, str] = {
     "auto": "Auto-detect",
@@ -502,6 +508,18 @@ def transcribe_audio(file_path: str, language: str | None = None) -> str:
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     user_id = update.effective_user.id
+
+    # Log session outcome if there was an active session
+    prev_history = user_histories.get(user_id)
+    if prev_history and outcome_logger:
+        model_key = user_models.get(user_id, default_model_key)
+        outcome_logger.log(
+            user_id=user_id,
+            outcome=SessionOutcome.USER_ENDED,
+            model_key=model_key,
+            turns=len(prev_history),
+        )
+
     user_histories.pop(user_id, None)
     user_scores.pop(user_id, None)
     user_pending_scores.pop(user_id, None)
@@ -520,8 +538,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Commands:\n"
         "/model - Switch between AI models\n"
         "/adapters - Toggle LoRA adapters on/off\n"
+        "/streaming - Toggle streaming response mode\n"
         "/language - Set voice transcription language\n"
         "/score - View conversation quality scores\n"
+        "/stats - View session outcome analytics\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
     )
@@ -530,6 +550,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /clear command."""
     user_id = update.effective_user.id
+
+    # Log session outcome if there was an active session
+    prev_history = user_histories.get(user_id)
+    if prev_history and outcome_logger:
+        model_key = user_models.get(user_id, default_model_key)
+        outcome_logger.log(
+            user_id=user_id,
+            outcome=SessionOutcome.USER_ENDED,
+            model_key=model_key,
+            turns=len(prev_history),
+        )
+
     user_histories.pop(user_id, None)
     user_scores.pop(user_id, None)
     user_pending_scores.pop(user_id, None)
@@ -628,23 +660,73 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     history = user_histories.get(user_id, [])
     history_snapshot = list(history)
+    use_streaming = user_streaming_enabled.get(user_id, False)
 
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id, action=ChatAction.TYPING
-    )
+    if use_streaming and skill_router and model_manager:
+        # ── Streaming path ───────────────────────────────────────
+        try:
+            adapters_on = user_adapters_enabled.get(user_id, True)
+            response, skill_name, crisis_event = await send_streaming_response(
+                update,
+                context,
+                user_text,
+                model_key,
+                history,
+                adapters_on,
+                skill_router=skill_router,
+                model_manager=model_manager,
+            )
+        except Exception:
+            logger.exception("handle_message: streaming error for user %s model %s", user_id, model_key)
+            if outcome_logger:
+                outcome_logger.log(
+                    user_id=user_id,
+                    outcome=SessionOutcome.ERROR,
+                    model_key=model_key,
+                    turns=len(history),
+                )
+            await update.message.reply_text(
+                "Sorry, something went wrong generating a response. "
+                "Please try again or switch models with /model."
+            )
+            return
 
-    try:
-        adapters_on = user_adapters_enabled.get(user_id, True)
-        response, skill_name = await asyncio.to_thread(
-            route_and_generate, user_text, model_key, history, adapters_on
+        # Log crisis escalation
+        if crisis_event and crisis_event.is_crisis and outcome_logger:
+            outcome_logger.log(
+                user_id=user_id,
+                outcome=SessionOutcome.CRISIS_ESCALATED,
+                skill=skill_name,
+                model_key=model_key,
+                turns=len(history) + 1,
+                crisis_detected=True,
+            )
+
+    else:
+        # ── Synchronous path (original) ──────────────────────────
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING
         )
-    except Exception:
-        logger.exception("handle_message: generation error for user %s model %s", user_id, model_key)
-        await update.message.reply_text(
-            "Sorry, something went wrong generating a response. "
-            "Please try again or switch models with /model."
-        )
-        return
+
+        try:
+            adapters_on = user_adapters_enabled.get(user_id, True)
+            response, skill_name = await asyncio.to_thread(
+                route_and_generate, user_text, model_key, history, adapters_on
+            )
+        except Exception:
+            logger.exception("handle_message: generation error for user %s model %s", user_id, model_key)
+            if outcome_logger:
+                outcome_logger.log(
+                    user_id=user_id,
+                    outcome=SessionOutcome.ERROR,
+                    model_key=model_key,
+                    turns=len(history),
+                )
+            await update.message.reply_text(
+                "Sorry, something went wrong generating a response. "
+                "Please try again or switch models with /model."
+            )
+            return
 
     logger.info("User %s [%s] routed to [%s]", user_id, model_key, skill_name)
 
@@ -659,7 +741,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         history.pop(0)
     user_histories[user_id] = history
 
-    await update.message.reply_text(response)
+    # Only send reply for non-streaming path (streaming already sent it)
+    if not use_streaming:
+        await update.message.reply_text(response)
 
     if _judges_active:
         asyncio.create_task(
@@ -787,6 +871,43 @@ async def adapters_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     logger.info("User %s set adapters=%s for model=%s", user_id, state_label, model_key)
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /stats command — show session outcome analytics."""
+    user_id = update.effective_user.id
+
+    if outcome_logger is None:
+        await update.message.reply_text("Session analytics are not available.")
+        return
+
+    # Check for --all flag (admin/debug use)
+    show_all = context.args and context.args[0] == "--all"
+
+    if show_all:
+        records = outcome_logger.load_all()
+        report = format_stats_report(records)
+    else:
+        records = outcome_logger.load_for_user(user_id)
+        report = format_stats_report(records, user_id=user_id)
+
+    await update.message.reply_text(report)
+
+
+async def streaming_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /streaming command — toggle streaming mode on/off."""
+    user_id = update.effective_user.id
+    current = user_streaming_enabled.get(user_id, False)
+    new_state = not current
+    user_streaming_enabled[user_id] = new_state
+    state_label = "ON" if new_state else "OFF"
+
+    await update.message.reply_text(
+        f"Streaming mode: {state_label}\n\n"
+        f"{'Responses will be delivered in chunks as they generate.' if new_state else 'Responses will be delivered all at once (default).'}\n\n"
+        "Use /streaming again to toggle."
+    )
+    logger.info("User %s set streaming=%s", user_id, state_label)
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
@@ -865,6 +986,11 @@ def main() -> None:
     global default_whisper_language
     default_whisper_language = args.whisper_language
 
+    # Initialise session outcome logger
+    global outcome_logger
+    outcome_logger = OutcomeLogger(str(_PROJECT_ROOT / "logs" / "session_outcomes.jsonl"))
+    print(f"Session outcome logging to: {outcome_logger.path}")
+
     # Initialise LLM judges for auto-scoring (optional — needs API keys)
     global _judges_active
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
@@ -890,6 +1016,8 @@ def main() -> None:
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("score", score_command))
     app.add_handler(CommandHandler("adapters", adapters_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("streaming", streaming_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
