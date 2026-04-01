@@ -91,10 +91,11 @@ def generate_response_multiturn(
     user_message: str,
     system_prompt: str,
     history: list[tuple[str, str]],
+    use_system_role: bool = True,
+    seed: int | None = None,
     max_new_tokens: int = 512,
 ) -> str:
     """Generate a response with multi-turn history, handling Gemma compatibility."""
-    use_system_role = _supports_system_role(tokenizer)
 
     if use_system_role:
         messages = [{"role": "system", "content": system_prompt}]
@@ -120,6 +121,11 @@ def generate_response_multiturn(
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_length = inputs["input_ids"].shape[1]
+
+    if seed is not None:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
     with torch.no_grad():
         outputs = model.generate(
@@ -150,15 +156,38 @@ def generate_response_multiturn(
 # Scoring helpers
 # ---------------------------------------------------------------------------
 
-def format_conversation_context(history: list[tuple[str, str]]) -> str:
+MAX_SCORE = 2
+
+
+def clamp_scores(scores: dict) -> dict:
+    """Clamp all dimension scores to [0, MAX_SCORE] range.
+
+    Safety net in case the judge returns out-of-range scores.
+    """
+    for dim in DIMENSIONS:
+        dim_data = scores.get(dim)
+        if isinstance(dim_data, dict) and isinstance(dim_data.get("score"), (int, float)):
+            dim_data["score"] = min(max(dim_data["score"], 0), MAX_SCORE)
+    return scores
+
+
+def format_conversation_context(
+    history: list[tuple[str, str]], situation: str = "",
+) -> str:
     """Format history as 'User: ... / Counselor: ...' for the judge."""
+    parts = []
+    if situation:
+        parts.append(f"Situation context: {situation}")
+        parts.append("")
     if not history:
+        if parts:
+            parts.append("(No prior conversation)")
+            return "\n".join(parts)
         return "(No prior context)"
-    lines = []
     for user_msg, bot_msg in history:
-        lines.append(f"User: {user_msg}")
-        lines.append(f"Counselor: {bot_msg}")
-    return "\n".join(lines)
+        parts.append(f"User: {user_msg}")
+        parts.append(f"Counselor: {bot_msg}")
+    return "\n".join(parts)
 
 
 def compute_dimension_averages(turns: list[dict]) -> dict:
@@ -190,6 +219,72 @@ def compute_dimension_averages(turns: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Multi-turn coherence assessment
+# ---------------------------------------------------------------------------
+
+COHERENCE_PROMPT = """\
+Review this full multi-turn therapeutic conversation and score coherence on a 0-2 scale.
+
+1. Memory & Continuity (0-2)
+0: Contradicts or ignores earlier exchanges
+1: Acknowledges prior context but doesn't build on it
+2: Actively references and builds on earlier exchanges
+
+2. Therapeutic Arc (0-2)
+0: No progression; repetitive or circular
+1: Some progression but inconsistent direction
+2: Clear therapeutic arc with appropriate pacing
+
+3. Repetition Avoidance (0-2)
+0: Repeats same phrases or techniques verbatim
+1: Some variation but noticeable repetition
+2: Each response adds new value; varied techniques
+
+Situation: {SITUATION}
+
+Full conversation:
+{FULL_CONVERSATION}
+
+Output ONLY valid JSON:
+{{
+  "memory": {{"score": "0-2", "evidence": "..."}},
+  "therapeutic_arc": {{"score": "0-2", "evidence": "..."}},
+  "repetition_avoidance": {{"score": "0-2", "evidence": "..."}},
+  "overall_coherence_comment": "One sentence summary"
+}}"""
+
+COHERENCE_DIMS = ["memory", "therapeutic_arc", "repetition_avoidance"]
+
+
+def score_coherence(call_fn, judge_system_prompt: str, situation: str, turns: list[dict]) -> dict:
+    """Send full conversation to judge for holistic multi-turn coherence scoring."""
+    conv_lines = []
+    for turn in turns:
+        conv_lines.append(f"User: {turn['user_input']}")
+        conv_lines.append(f"Counselor: {turn['model_response']}")
+    full_conv = "\n".join(conv_lines)
+
+    user_msg = COHERENCE_PROMPT.format(
+        SITUATION=situation,
+        FULL_CONVERSATION=full_conv,
+    )
+
+    try:
+        raw = call_judge_with_retry(call_fn, judge_system_prompt, user_msg)
+        for dim in COHERENCE_DIMS:
+            dim_data = raw.get(dim)
+            if isinstance(dim_data, dict) and isinstance(dim_data.get("score"), (int, float)):
+                dim_data["score"] = min(max(dim_data["score"], 0), MAX_SCORE)
+        return raw
+    except Exception as e:
+        print(f"    ERROR scoring coherence: {e}")
+        return {
+            dim: {"score": "N/A", "evidence": f"Error: {e}"}
+            for dim in COHERENCE_DIMS
+        }
+
+
+# ---------------------------------------------------------------------------
 # Main per-model routine
 # ---------------------------------------------------------------------------
 
@@ -214,14 +309,40 @@ def run_model(
     # Load model
     model, tokenizer = load_model(model_path)
     model.training = False
+    use_system_role = _supports_system_role(tokenizer)
+    print(f"  System role support: {use_system_role}")
 
     case_results = []
+
+    # Per-case progress saving for crash recovery
+    progress_path = output_dir / f".{model_key}.progress.jsonl"
+    completed_case_ids = set()
+    if progress_path.exists():
+        print(f"  Found progress file, loading completed cases...")
+        with open(progress_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    entry = json.loads(line)
+                    case_results.append(entry)
+                    completed_case_ids.add(entry["case_id"])
+        print(f"  Resumed {len(completed_case_ids)} completed cases")
 
     for case in cases:
         case_id = case["case_id"]
         title = case["title"]
         user_turns = case["user_turns"]
+        situation = case.get("situation", "")
+
+        if case_id in completed_case_ids:
+            print(f"\n  Skipping {case_id}: {title} (already completed)")
+            continue
+
         print(f"\n  Case {case_id}: {title} ({len(user_turns)} turns)")
+
+        # Deterministic seed base for this case
+        case_num = int(case_id.split("_")[1]) if "_" in case_id else 0
+        seed_base = case_num * 1000
 
         history: list[tuple[str, str]] = []
         turns = []
@@ -231,9 +352,11 @@ def run_model(
 
             # Generate response
             t0 = time.time()
+            turn_seed = seed_base + turn_idx
             try:
                 response = generate_response_multiturn(
                     model, tokenizer, user_msg, system_prompt, history,
+                    use_system_role=use_system_role, seed=turn_seed,
                 )
             except Exception as e:
                 print(f"    ERROR generating turn {turn_num}: {e}")
@@ -241,7 +364,7 @@ def run_model(
             gen_time = round(time.time() - t0, 2)
 
             # Score this turn via judge
-            context = format_conversation_context(history)
+            context = format_conversation_context(history, situation=situation)
             judge_user_msg = judge_user_template.format(
                 CONVERSATION_HISTORY=context,
                 USER_INPUT=user_msg,
@@ -250,6 +373,7 @@ def run_model(
 
             try:
                 scores = call_judge_with_retry(call_fn, judge_system_prompt, judge_user_msg)
+                scores = clamp_scores(scores)
             except Exception as e:
                 print(f"    ERROR scoring turn {turn_num}: {e}")
                 scores = {
@@ -277,12 +401,25 @@ def run_model(
             history.append((user_msg, response))
 
         case_averages = compute_dimension_averages(turns)
-        case_results.append({
+
+        # Multi-turn coherence assessment
+        coherence = {}
+        if len(turns) >= 2:
+            print(f"    Scoring multi-turn coherence...")
+            coherence = score_coherence(call_fn, judge_system_prompt, situation, turns)
+
+        case_result = {
             "case_id": case_id,
             "title": title,
             "turns": turns,
             "case_averages": case_averages,
-        })
+            "coherence": coherence,
+        }
+        case_results.append(case_result)
+
+        # Append to progress file for crash recovery
+        with open(progress_path, "a") as f:
+            f.write(json.dumps(case_result, ensure_ascii=False) + "\n")
 
     # Compute model-level averages
     all_turns = [t for cr in case_results for t in cr["turns"]]
@@ -304,6 +441,10 @@ def run_model(
 
     with open(output_path, "w") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
+
+    # Clean up progress file after successful save
+    if progress_path.exists():
+        progress_path.unlink()
 
     print(f"\n  Saved results to {output_path}")
     print(f"  Model averages: {model_averages}")
@@ -375,50 +516,130 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
 
     lines.append("")
 
-    # Per-case breakdown
+    # Per-case breakdown with per-turn scores
     lines.append("## Per-Case Breakdown")
     lines.append("")
 
     first_model_data = results[model_order[0]]
     case_list = first_model_data["cases"]
 
+    turn_header = (
+        "| Turn | Empathy | CBT | Guided Disc. | Safety | Clinical "
+        "| Overall | Judge Comment |"
+    )
+    turn_sep = "|---|---|---|---|---|---|---|---|"
+
+    def _fmt_score(val) -> str:
+        if isinstance(val, (int, float)):
+            return f"{val}"
+        return str(val) if val else "N/A"
+
+    def _turn_overall(turn_scores: dict) -> str:
+        nums = []
+        for dim in DIMENSIONS:
+            d = turn_scores.get(dim, {})
+            s = d.get("score") if isinstance(d, dict) else d
+            if isinstance(s, (int, float)):
+                nums.append(s)
+        if not nums:
+            return "N/A"
+        return f"{sum(nums) / len(nums):.1f}"
+
     for case_info in case_list:
         case_id = case_info["case_id"]
         title = case_info["title"]
         lines.append(f"### {case_id.replace('_', ' ').title()}: {title}")
         lines.append("")
-        lines.append(header)
-        lines.append(separator)
 
         for key in model_order:
             data = results[key]
-            # Find matching case
             case_data = None
             for c in data["cases"]:
                 if c["case_id"] == case_id:
                     case_data = c
                     break
-
             if case_data is None:
                 continue
 
-            avgs = case_data["case_averages"]
             display = MODEL_DISPLAY_NAMES.get(key, key)
-            row = f"| {display:<14} |"
+            lines.append(f"#### {display}")
+            lines.append("")
+            lines.append(turn_header)
+            lines.append(turn_sep)
+
+            for turn in case_data.get("turns", []):
+                turn_num = turn.get("turn", "?")
+                scores = turn.get("scores", {})
+                comment = turn.get("overall_comment", "").replace("|", "/")
+
+                row = f"| {turn_num} |"
+                for dim in DIMENSIONS:
+                    dim_data = scores.get(dim, {})
+                    s = dim_data.get("score") if isinstance(dim_data, dict) else dim_data
+                    row += f" {_fmt_score(s)} |"
+                row += f" {_turn_overall(scores)} |"
+                # Truncate very long comments for table readability
+                short_comment = comment[:120] + "..." if len(comment) > 120 else comment
+                row += f" {short_comment} |"
+                lines.append(row)
+
+            # Average row
+            avgs = case_data["case_averages"]
+            avg_row = "| **Avg** |"
             for dim in DIMENSIONS:
                 val = avgs.get(dim, "N/A")
                 if isinstance(val, str):
-                    row += f" {val:>5} |"
+                    avg_row += f" **{val}** |"
                 else:
-                    row += f" {val:>5.1f} |"
+                    avg_row += f" **{val:.1f}** |"
             overall = avgs.get("overall", "N/A")
             if isinstance(overall, str):
-                row += f" {overall:>7} |"
+                avg_row += f" **{overall}** |"
             else:
-                row += f" {overall:>7.1f} |"
-            lines.append(row)
+                avg_row += f" **{overall:.1f}** |"
+            avg_row += " |"
+            lines.append(avg_row)
+            lines.append("")
 
-        lines.append("")
+            # Detailed evidence in collapsible block
+            lines.append(f"<details><summary>Dimension evidence (per-turn)</summary>")
+            lines.append("")
+            for turn in case_data.get("turns", []):
+                turn_num = turn.get("turn", "?")
+                scores = turn.get("scores", {})
+                comment = turn.get("overall_comment", "")
+                lines.append(f"**Turn {turn_num}**")
+                for dim in DIMENSIONS:
+                    dim_data = scores.get(dim, {})
+                    if isinstance(dim_data, dict):
+                        s = dim_data.get("score", "N/A")
+                        ev = dim_data.get("evidence", "")
+                    else:
+                        s, ev = dim_data, ""
+                    lines.append(
+                        f"- **{dim_headers.get(dim, dim)}** ({s}): {ev}"
+                    )
+                if comment:
+                    lines.append(f"- *Overall*: {comment}")
+                lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
+            # Coherence scores (if available)
+            coherence = case_data.get("coherence", {})
+            if coherence and any(isinstance(coherence.get(d), dict) for d in COHERENCE_DIMS):
+                lines.append("**Coherence Assessment:**")
+                for dim in COHERENCE_DIMS:
+                    dim_data = coherence.get(dim, {})
+                    if isinstance(dim_data, dict):
+                        s = dim_data.get("score", "N/A")
+                        ev = dim_data.get("evidence", "")
+                        display_dim = dim.replace("_", " ").title()
+                        lines.append(f"- {display_dim}: **{s}** -- {ev}")
+                coh_comment = coherence.get("overall_coherence_comment", "")
+                if coh_comment:
+                    lines.append(f"- *Summary*: {coh_comment}")
+                lines.append("")
 
     # Footer
     judge_key = first_model_data["metadata"].get("judge", "unknown")
@@ -461,7 +682,7 @@ def main():
     )
     parser.add_argument(
         "--resume", action="store_true",
-        help="Skip models that already have output JSON",
+        help="Skip completed models (output JSON) and completed cases (progress file)",
     )
     parser.add_argument(
         "--prompt", type=str, default="evaluation/llm_judge_prompt.md",
