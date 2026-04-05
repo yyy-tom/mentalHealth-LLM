@@ -137,6 +137,7 @@ async def stream_response(
     model_key: str,
     history: list[tuple[str, str]] | None = None,
     adapters_enabled: bool = True,
+    prompt_enabled: bool = True,
     *,
     skill_router,
     model_manager,
@@ -153,6 +154,7 @@ async def stream_response(
         model_key: Key into ModelManager (e.g. "qwen-ft").
         history: Conversation history as (user, assistant) tuples.
         adapters_enabled: Whether LoRA adapters are active.
+        prompt_enabled: Whether to use skill-specific system prompts.
         skill_router: A ``SkillRouter`` instance.
         model_manager: A ``ModelManager`` instance.
         chunk_min_len: Minimum characters per TextDeltaEvent chunk.
@@ -197,6 +199,7 @@ async def stream_response(
         model_key=model_key,
         history=history,
         adapters_enabled=adapters_enabled,
+        prompt_enabled=prompt_enabled,
         skill_router=skill_router,
         model_manager=model_manager,
     )
@@ -245,6 +248,7 @@ def _generate_sync(
     model_key: str,
     history: list[tuple[str, str]] | None,
     adapters_enabled: bool,
+    prompt_enabled: bool = True,
     skill_router,
     model_manager,
 ) -> tuple[str, str]:
@@ -268,7 +272,8 @@ def _generate_sync(
         else:
             mdl.disable_adapter_layers()
 
-    system_prompt = skill_router.get_system_prompt(skill_name)
+    # Get system prompt only if prompt is enabled
+    system_prompt = skill_router.get_system_prompt(skill_name) if prompt_enabled else ""
 
     # Import generation function lazily to avoid circular imports
     from scripts.telegram_bot import generate_response
@@ -306,6 +311,7 @@ async def send_streaming_response(
     history: list[tuple[str, str]] | None,
     adapters_enabled: bool,
     *,
+    prompt_enabled: bool = True,
     skill_router,
     model_manager,
     typing_interval: float = 4.0,
@@ -322,6 +328,7 @@ async def send_streaming_response(
         model_key: Model key string.
         history: Conversation history.
         adapters_enabled: LoRA adapter toggle.
+        prompt_enabled: Whether to use skill-specific system prompts.
         skill_router: SkillRouter instance.
         model_manager: ModelManager instance.
         typing_interval: Seconds between typing action refreshes.
@@ -350,6 +357,7 @@ async def send_streaming_response(
             model_key,
             history,
             adapters_enabled,
+            prompt_enabled,
             skill_router=skill_router,
             model_manager=model_manager,
         ):

@@ -310,6 +310,7 @@ user_models: dict[int, str] = {}
 user_languages: dict[int, str | None] = {}
 user_adapters_enabled: dict[int, bool] = {}  # True = adapters on (default)
 user_streaming_enabled: dict[int, bool] = {}  # True = streaming on
+user_prompt_enabled: dict[int, bool] = {}  # True = system prompt on (default)
 
 default_whisper_language: str | None = None
 
@@ -403,23 +404,26 @@ def generate_response(
     """Generate a counseling response using the given system prompt and model."""
     use_system_role = _supports_system_role(tok)
 
-    if use_system_role:
+    # Handle empty/disabled system prompt
+    has_prompt = bool(system_prompt and system_prompt.strip())
+
+    if use_system_role and has_prompt:
         messages = [{"role": "system", "content": system_prompt}]
     else:
-        # Models like Gemma that don't support system role:
-        # prepend the system prompt into the first user message.
+        # No system prompt, or models that don't support system role
         messages = []
 
     if history:
         for i, (user_turn, counselor_turn) in enumerate(history):
             content = user_turn
-            if not use_system_role and i == 0:
+            # Only prepend system prompt if: no system role support, has prompt, and first message
+            if not use_system_role and has_prompt and i == 0:
                 content = f"{system_prompt}\n\n{user_turn}"
             messages.append({"role": "user", "content": content})
             messages.append({"role": "assistant", "content": counselor_turn})
 
     user_content = question
-    if not use_system_role and not history:
+    if not use_system_role and has_prompt and not history:
         user_content = f"{system_prompt}\n\n{question}"
     messages.append({"role": "user", "content": user_content})
 
@@ -469,6 +473,7 @@ def route_and_generate(
     model_key: str,
     history: list[tuple[str, str]] | None = None,
     adapters_enabled: bool = True,
+    prompt_enabled: bool = True,
 ) -> tuple[str, str]:
     """Route to the best skill, activate adapter if applicable, and generate.
 
@@ -494,7 +499,8 @@ def route_and_generate(
         else:
             mdl.disable_adapter_layers()
 
-    system_prompt = skill_router.get_system_prompt(skill_name)
+    # Get system prompt only if prompt is enabled
+    system_prompt = skill_router.get_system_prompt(skill_name) if prompt_enabled else ""
     try:
         response = generate_response(question, system_prompt, mdl, tok, history)
     except Exception:
@@ -585,6 +591,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Commands:\n"
         "/model - Switch between AI models\n"
         "/adapters - Toggle LoRA adapters on/off\n"
+        "/prompt - Toggle system prompt on/off\n"
         "/streaming - Toggle streaming response mode\n"
         "/language - Set voice transcription language\n"
         "/score - View conversation quality scores\n"
@@ -713,6 +720,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # ── Streaming path ───────────────────────────────────────
         try:
             adapters_on = user_adapters_enabled.get(user_id, True)
+            prompt_on = user_prompt_enabled.get(user_id, True)
             response, skill_name, crisis_event = await send_streaming_response(
                 update,
                 context,
@@ -720,6 +728,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 model_key,
                 history,
                 adapters_on,
+                prompt_enabled=prompt_on,
                 skill_router=skill_router,
                 model_manager=model_manager,
             )
@@ -757,8 +766,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         try:
             adapters_on = user_adapters_enabled.get(user_id, True)
+            prompt_on = user_prompt_enabled.get(user_id, True)
             response, skill_name = await asyncio.to_thread(
-                route_and_generate, user_text, model_key, history, adapters_on
+                route_and_generate, user_text, model_key, history, adapters_on, prompt_on
             )
         except Exception:
             logger.exception("handle_message: generation error for user %s model %s", user_id, model_key)
@@ -835,8 +845,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 chat_id=update.effective_chat.id, action=ChatAction.TYPING
             )
             adapters_on = user_adapters_enabled.get(user_id, True)
+            prompt_on = user_prompt_enabled.get(user_id, True)
             resp, skill_name = await asyncio.to_thread(
-                route_and_generate, transcript, model_key, history, adapters_on
+                route_and_generate, transcript, model_key, history, adapters_on, prompt_on
             )
             logger.info("User %s [%s] (voice) routed to [%s]", user_id, model_key, skill_name)
             if not resp or not resp.strip():
@@ -948,6 +959,23 @@ async def streaming_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         "Use /streaming again to toggle."
     )
     logger.info("User %s set streaming=%s", user_id, state_label)
+
+
+async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /prompt command — toggle system prompt on/off for the current user."""
+    user_id = update.effective_user.id
+
+    current = user_prompt_enabled.get(user_id, True)
+    new_state = not current
+    user_prompt_enabled[user_id] = new_state
+    state_label = "ON" if new_state else "OFF"
+
+    await update.message.reply_text(
+        f"System prompt: {state_label}\n\n"
+        f"{'Skill-specific system prompts will guide responses.' if new_state else 'System prompts disabled — using only your input and conversation history.'}\n\n"
+        "Use /prompt again to toggle."
+    )
+    logger.info("User %s set prompt=%s", user_id, state_label)
 
 
 # ── Main ────────────────────────────────────────────────────────────
@@ -1075,6 +1103,7 @@ def main() -> None:
     app.add_handler(CommandHandler("language", language_command))
     app.add_handler(CommandHandler("score", score_command))
     app.add_handler(CommandHandler("adapters", adapters_command))
+    app.add_handler(CommandHandler("prompt", prompt_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("streaming", streaming_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
