@@ -16,6 +16,9 @@ from mental_health_llm.response_guard import ResponseGuard, GuardResult
 from mental_health_llm.prompt_builder import TherapyPromptBuilder
 from mental_health_llm.session_store import SQLiteSessionStore
 from mental_health_llm.adapter_cache import AdapterCache
+from mental_health_llm.memory_persistence import CompactionMemoryStore, CompactionRecord
+from mental_health_llm.tiered_context import TieredContextManager, Tier, TieredTurn
+from mental_health_llm.compaction_layers import MultiLayerCompactor, CompactionResult
 from mental_health_llm.protocols import (
     BaseRouter,
     BaseSafetyGate,
@@ -49,6 +52,13 @@ __all__ = [
     "TherapyPromptBuilder",
     "SQLiteSessionStore",
     "AdapterCache",
+    "CompactionMemoryStore",
+    "CompactionRecord",
+    "TieredContextManager",
+    "Tier",
+    "TieredTurn",
+    "MultiLayerCompactor",
+    "CompactionResult",
     "BaseRouter",
     "BaseSafetyGate",
     "BaseGenerator",
