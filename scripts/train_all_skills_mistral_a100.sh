@@ -316,12 +316,10 @@ for SKILL in $SKILLS; do
         --skill $SKILL \
         --base_model $RESOLVED_MODEL \
         --output_dir $ADAPTER_DIR \
-        --batch_size 4 \
-        --eval_batch_size 4 \
-        --max_length 768 \
-        --gradient_accumulation_steps 2 \
-        --lora_r 32 \
-        --lora_alpha 64"
+        --batch-size 4 \
+        --max-length 768 \
+        --grad-accum 2 \
+        --lora-r 32"
 
     if eval $CMD; then
         SUCCESS=$((SUCCESS + 1))
