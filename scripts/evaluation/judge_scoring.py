@@ -9,7 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from evaluation.run_llm_judge import (
+from .run_llm_judge import (
     DIMENSIONS,
     call_judge_with_retry,
     call_openai,

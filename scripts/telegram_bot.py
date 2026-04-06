@@ -4,12 +4,12 @@ Telegram bot for mental health counseling with multi-model support.
 
 Supports 6 model variants (3 fine-tuned + 3 base) with per-user model
 selection via /model command. Skill-based routing selects system prompts;
-LoRA adapters are activated only for Qwen fine-tuned models.
+LoRA adapters can be activated for all fine-tuned models when available.
 
 Usage:
     TELEGRAM_BOT_TOKEN="xxx" python3 scripts/telegram_bot.py \
         --models qwen-ft gemma-ft mistral-ft \
-        --adapters-dir adapters \
+        --adapters-dir adapters/qwen \
         --preload
 """
 
@@ -80,8 +80,7 @@ from evaluation.harness.runner import EvaluationHarness
 from evaluation.harness.baseline import BaselineManager
 from evaluation.harness.metrics import MetricsAggregator
 
-sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
-from evaluation.judge_scoring import (
+from scripts.evaluation.judge_scoring import (
     init_judges,
     score_exchange_async,
     format_score_report,
@@ -154,6 +153,7 @@ SKILL_NAMES = [
     "psychoeducation",
     "professional-counseling",
 ]
+ADAPTER_FAMILIES = {"qwen", "gemma", "mistral"}
 
 
 # ── ModelManager ──────────────────────────────────────────────────
@@ -245,13 +245,19 @@ class ModelManager:
 
         mdl = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs)
 
-        # Load LoRA adapters only for qwen-ft
+        # Load LoRA adapters for fine-tuned models when configured
         loaded_skills: list[str] = []
-        if model_key == "qwen-ft" and self._adapters_dir:
-            adapters_path = Path(self._adapters_dir)
-            if not adapters_path.is_absolute():
-                adapters_path = _PROJECT_ROOT / adapters_path
-            mdl, loaded_skills = _load_adapters(mdl, str(adapters_path))
+        if model_key.endswith("-ft") and self._adapters_dir:
+            adapters_root = Path(self._adapters_dir)
+            if not adapters_root.is_absolute():
+                adapters_root = _PROJECT_ROOT / adapters_root
+            adapters_root = _normalize_adapters_root(adapters_root)
+            adapters_path = _resolve_adapters_dir_for_model(adapters_root, model_key)
+            if adapters_path is None:
+                print(f"  No adapters found for {model_key} under {adapters_root}")
+            else:
+                print(f"  Loading adapters for {model_key} from {adapters_path}")
+                mdl, loaded_skills = _load_adapters(mdl, str(adapters_path))
 
         mdl.training = False
 
@@ -308,6 +314,57 @@ def _load_adapters(mdl, adapters_dir: str) -> tuple:
             print(f"  Failed to load {skill_name}: {e}")
 
     return mdl, loaded_skills
+
+
+def _has_adapter_files(adapter_path: Path) -> bool:
+    """Check whether a skill adapter directory contains LoRA artifacts."""
+    return (
+        (adapter_path / "adapter_config.json").exists()
+        or (adapter_path / "adapter_model.safetensors").exists()
+        or (adapter_path / "adapter_model.bin").exists()
+    )
+
+
+def _normalize_adapters_root(adapters_path: Path) -> Path:
+    """Normalize adapter path to a shared root.
+
+    Allows passing either:
+      - shared root:   <root>/adapters
+      - family folder: <root>/adapters/qwen
+    """
+    if adapters_path.name in ADAPTER_FAMILIES:
+        return adapters_path.parent
+    return adapters_path
+
+
+def _resolve_adapters_dir_for_model(adapters_root: Path, model_key: str) -> Path | None:
+    """Resolve adapter directory for a model.
+
+    Supported layouts:
+      1) Legacy Qwen-only: <adapters_root>/<skill_name>
+      2) Per-model: <adapters_root>/<model_key>/<skill_name>
+      3) Per-family: <adapters_root>/<family>/<skill_name> (e.g., qwen/gemma/mistral)
+    """
+    family = model_key.replace("-ft", "")
+    candidates = [
+        adapters_root / model_key,
+        adapters_root / family,
+    ]
+
+    # Backward compatibility: older setups store Qwen adapters directly in root.
+    if model_key == "qwen-ft":
+        candidates.append(adapters_root)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if not candidate.exists() or not candidate.is_dir():
+            continue
+        if any(_has_adapter_files(candidate / skill_name) for skill_name in SKILL_NAMES):
+            return candidate
+    return None
 
 
 # ── Global state ──────────────────────────────────────────────────
@@ -952,7 +1009,7 @@ async def adapters_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not loaded_skills:
         await update.message.reply_text(
             f"No LoRA adapters are loaded for {model_manager.display_name(model_key)}.\n"
-            "Adapters are only available for the Qwen fine-tuned model."
+            "Adapters are only available when skill checkpoints exist for the current fine-tuned model."
         )
         return
 
@@ -1202,7 +1259,11 @@ def main() -> None:
         "--adapters-dir",
         type=str,
         default=None,
-        help="Directory containing Qwen skill LoRA adapter subdirectories",
+        help=(
+            "Directory containing skill LoRA adapters. "
+            "Use either adapters root (e.g. adapters/) or a family path (e.g. adapters/qwen/). "
+            "Supports <dir>/<skill>, <dir>/<model-key>/<skill>, or <dir>/<family>/<skill>."
+        ),
     )
     parser.add_argument(
         "--whisper_model",
