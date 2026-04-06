@@ -72,6 +72,7 @@ from mental_health_llm.session_outcome import SessionOutcome, OutcomeLogger, for
 from mental_health_llm.streaming import send_streaming_response
 from mental_health_llm.session_store import SQLiteSessionStore
 from mental_health_llm.adapter_cache import AdapterCache
+from mental_health_llm.context_integration import EnhancedContextManager
 
 sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
 from evaluation.judge_scoring import (
@@ -99,7 +100,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-HISTORY_LIMIT = 6
+HISTORY_LIMIT = 6  # Kept for backward compatibility; EnhancedContextManager uses hot_size
+USE_ENHANCED_CONTEXT = True  # Toggle to enable claw-code context management
 
 # ── Model Registry ────────────────────────────────────────────────
 
@@ -304,6 +306,9 @@ default_model_key: str = "qwen-ft"
 # Session persistence (SQLite-backed, replaces in-memory user_histories)
 session_store: SQLiteSessionStore | None = None
 
+# Enhanced context manager (claw-code integration)
+enhanced_context: EnhancedContextManager | None = None
+
 # Per-user state (in-memory fallback when session_store is None)
 user_histories: dict[int, list[tuple[str, str]]] = {}
 user_models: dict[int, str] = {}
@@ -316,7 +321,9 @@ default_whisper_language: str | None = None
 
 
 def _get_history(user_id: int) -> list[tuple[str, str]]:
-    """Get conversation history — from session store if available, else in-memory."""
+    """Get conversation history — from enhanced context, session store, or in-memory."""
+    if USE_ENHANCED_CONTEXT and enhanced_context is not None:
+        return enhanced_context.get_history(user_id)
     if session_store is not None:
         return session_store.restore_history(user_id)
     return user_histories.get(user_id, [])
@@ -330,8 +337,22 @@ def _save_turn(
     skill: str = "",
     is_crisis: bool = False,
 ) -> None:
-    """Save a conversation turn to session store + in-memory cache."""
+    """Save a conversation turn to enhanced context, session store, or in-memory cache."""
     model_key = user_models.get(user_id, default_model_key)
+
+    if USE_ENHANCED_CONTEXT and enhanced_context is not None:
+        # Use enhanced context manager (handles tiering + compaction + persistence)
+        enhanced_context.save_turn(
+            user_id=user_id,
+            user_msg=user_msg,
+            assistant_msg=assistant_msg,
+            skill=skill,
+            is_crisis=is_crisis,
+            model_key=model_key,
+        )
+        return
+
+    # Fallback to original behavior
     if session_store is not None:
         session_store.save_turn(
             user_id=user_id,
@@ -349,8 +370,16 @@ def _save_turn(
     user_histories[user_id] = history
 
 
-def _clear_history(user_id: int) -> None:
-    """Clear conversation history from both stores."""
+def _clear_history(user_id: int, persist_memory: bool = True) -> None:
+    """Clear conversation history, optionally persisting to memory."""
+    if USE_ENHANCED_CONTEXT and enhanced_context is not None:
+        if persist_memory:
+            enhanced_context.end_session(user_id, persist_memory=True)
+        else:
+            enhanced_context.clear_session(user_id)
+        return
+
+    # Fallback to original behavior
     if session_store is not None:
         session_store.delete_session(user_id)
     user_histories.pop(user_id, None)
@@ -595,6 +624,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/streaming - Toggle streaming response mode\n"
         "/language - Set voice transcription language\n"
         "/score - View conversation quality scores\n"
+        "/memory - View cross-session memory\n"
         "/stats - View session outcome analytics\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
@@ -978,6 +1008,56 @@ async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.info("User %s set prompt=%s", user_id, state_label)
 
 
+async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /memory command — show cross-session memory and key facts."""
+    user_id = update.effective_user.id
+
+    if not USE_ENHANCED_CONTEXT or enhanced_context is None:
+        await update.message.reply_text(
+            "Memory features are not enabled. "
+            "The bot is using basic session persistence."
+        )
+        return
+
+    # Get key facts about the user
+    key_facts = enhanced_context.get_user_key_facts(user_id, limit=5)
+
+    # Get current context to search for relevant memories
+    history = _get_history(user_id)
+    if history:
+        recent_context = " ".join(msg for msg, _ in history[-3:])
+        relevant_memories = enhanced_context.recall_relevant_memories(
+            user_id, recent_context, limit=3
+        )
+    else:
+        relevant_memories = []
+
+    # Format response
+    response_parts = ["📚 **Your Memory Profile**\n"]
+
+    if key_facts:
+        response_parts.append("**Key Facts:**")
+        for fact in key_facts:
+            response_parts.append(f"• {fact}")
+        response_parts.append("")
+
+    if relevant_memories:
+        response_parts.append("**Related Past Sessions:**")
+        for i, memory in enumerate(relevant_memories, 1):
+            # Truncate long memories
+            short = memory[:100] + "..." if len(memory) > 100 else memory
+            response_parts.append(f"{i}. {short}")
+        response_parts.append("")
+
+    if not key_facts and not relevant_memories:
+        response_parts.append(
+            "No memory stored yet. As we talk, I'll remember "
+            "important details to provide more personalized support."
+        )
+
+    await update.message.reply_text("\n".join(response_parts))
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
@@ -1073,6 +1153,19 @@ def main() -> None:
         session_store = SQLiteSessionStore(db_path=default_db)
         print(f"Session persistence enabled: {default_db}")
 
+    # Initialize enhanced context manager (claw-code integration)
+    global enhanced_context
+    if USE_ENHANCED_CONTEXT:
+        memory_db = str(_PROJECT_ROOT / "data" / "memory.db")
+        enhanced_context = EnhancedContextManager(
+            db_path=session_store._db_path if session_store else default_db,
+            memory_db_path=memory_db,
+            hot_size=4,  # Recent 4 turn pairs always verbatim
+            warm_size=6,  # Important turns kept in detail
+            target_tokens=1024,  # Context token budget
+        )
+        print(f"Enhanced context manager enabled (memory: {memory_db})")
+
     # Initialise session outcome logger
     global outcome_logger
     outcome_logger = OutcomeLogger(str(_PROJECT_ROOT / "logs" / "session_outcomes.jsonl"))
@@ -1106,6 +1199,7 @@ def main() -> None:
     app.add_handler(CommandHandler("prompt", prompt_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("streaming", streaming_command))
+    app.add_handler(CommandHandler("memory", memory_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))

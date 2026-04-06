@@ -19,6 +19,7 @@ from mental_health_llm.adapter_cache import AdapterCache
 from mental_health_llm.memory_persistence import CompactionMemoryStore, CompactionRecord
 from mental_health_llm.tiered_context import TieredContextManager, Tier, TieredTurn
 from mental_health_llm.compaction_layers import MultiLayerCompactor, CompactionResult
+from mental_health_llm.context_integration import EnhancedContextManager
 from mental_health_llm.protocols import (
     BaseRouter,
     BaseSafetyGate,
@@ -59,6 +60,7 @@ __all__ = [
     "TieredTurn",
     "MultiLayerCompactor",
     "CompactionResult",
+    "EnhancedContextManager",
     "BaseRouter",
     "BaseSafetyGate",
     "BaseGenerator",
