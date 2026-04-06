@@ -1,0 +1,42 @@
+# Evaluation Harness Configuration
+# See evaluation/harness/config.py for all options
+
+# Evaluation settings
+seed: 42
+max_new_tokens: 512
+temperature: 0.7
+
+# Statistical analysis
+bootstrap_samples: 1000
+confidence_level: 0.95
+min_sample_size: 30
+multiple_comparison_correction: none
+allow_placeholder_fallback: true
+
+# Feature flags (claw-code features)
+features:
+  compaction: true
+  response_guard: true
+  dynamic_prompts: true
+  session_store: true
+  tiered_context: true
+  multi_layer_compaction: true
+  memory_persistence: true
+
+# LLM Judge configuration
+judge:
+  name: deepseek
+  model: deepseek-chat
+  api_base: https://api.deepseek.com
+  temperature: 0.0
+  max_retries: 3
+  timeout: 60.0
+
+# Model registry
+model_registry:
+  qwen-ft: models/qwen2.5-7b-mental-health-fullft-a100
+  qwen-base: Qwen/Qwen2.5-7B-Instruct
+  gemma-ft: models/gemma2-9b-mental-health-fullft-a100
+  gemma-base: google/gemma-2-9b-it
+  mistral-ft: models/mistral-7b-mental-health-fullft-a100
+  mistral-base: mistralai/Mistral-7B-Instruct-v0.3

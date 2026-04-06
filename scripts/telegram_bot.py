@@ -74,6 +74,12 @@ from mental_health_llm.session_store import SQLiteSessionStore
 from mental_health_llm.adapter_cache import AdapterCache
 from mental_health_llm.context_integration import EnhancedContextManager
 
+# Evaluation harness integration
+from evaluation.harness.config import HarnessConfig, FeatureFlags
+from evaluation.harness.runner import EvaluationHarness
+from evaluation.harness.baseline import BaselineManager
+from evaluation.harness.metrics import MetricsAggregator
+
 sys.path.insert(0, str(_SCRIPT_DIR))  # for evaluation subpackage
 from evaluation.judge_scoring import (
     init_judges,
@@ -102,6 +108,14 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 6  # Kept for backward compatibility; EnhancedContextManager uses hot_size
 USE_ENHANCED_CONTEXT = True  # Toggle to enable claw-code context management
+
+# ── Harness Globals ───────────────────────────────────────────────
+
+harness_config: HarnessConfig | None = None
+evaluation_harness: EvaluationHarness | None = None
+baseline_manager: BaselineManager | None = None
+metrics_aggregator: MetricsAggregator | None = None
+harness_enabled: bool = False
 
 # ── Model Registry ────────────────────────────────────────────────
 
@@ -625,6 +639,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/language - Set voice transcription language\n"
         "/score - View conversation quality scores\n"
         "/memory - View cross-session memory\n"
+        "/harness - View evaluation harness status\n"
         "/stats - View session outcome analytics\n"
         "/clear - Reset our conversation history\n\n"
         "Feel free to start whenever you're ready."
@@ -1058,6 +1073,98 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("\n".join(response_parts))
 
 
+async def harness_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /harness command with lightweight subcommands."""
+    action = (context.args[0].strip().lower() if context.args else "status")
+
+    if not harness_enabled or evaluation_harness is None:
+        await update.message.reply_text(
+            "⚙️ **Evaluation Harness**\n\n"
+            "Status: Disabled\n\n"
+            "Start the bot with `--enable-harness` to enable evaluation tracking."
+        )
+        return
+
+    if action not in {"status", "features", "baseline"}:
+        await update.message.reply_text(
+            "Unknown harness command.\n\n"
+            "Use one of:\n"
+            "• /harness status\n"
+            "• /harness features\n"
+            "• /harness baseline"
+        )
+        return
+
+    if action == "features":
+        lines = ["⚙️ **Harness Features**\n"]
+        if harness_config:
+            for feat, enabled in harness_config.features.to_dict().items():
+                status = "✓" if enabled else "✗"
+                lines.append(f"{status} {feat.replace('_', ' ').title()}")
+        else:
+            lines.append("Harness config not loaded.")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    if action == "baseline":
+        lines = ["⚙️ **Harness Baseline**\n"]
+        if baseline_manager:
+            baselines = baseline_manager.list_baselines()
+            if baselines:
+                latest = baseline_manager.get_latest()
+                if latest:
+                    lines.append(f"Latest baseline: {latest.id}")
+                    lines.append(f"Commit: {latest.commit}")
+                    lines.append(f"Model: {latest.model}")
+                    dims = latest.metrics.get("dimensions", {})
+                    if dims:
+                        lines.append("")
+                        lines.append("Top dimensions:")
+                        for dim in (
+                            "empathy",
+                            "cbt_techniques",
+                            "guided_discovery",
+                            "safety_awareness",
+                            "clinical_appropriateness",
+                        ):
+                            dim_stats = dims.get(dim)
+                            if isinstance(dim_stats, dict) and "mean" in dim_stats:
+                                lines.append(f"• {dim}: {dim_stats['mean']:.3f}")
+                else:
+                    lines.append("No baseline metadata available.")
+            else:
+                lines.append("No baselines captured yet.")
+        else:
+            lines.append("Baseline manager not initialized.")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    # status
+    lines = ["⚙️ **Evaluation Harness**\n", "Status: ✅ Enabled\n"]
+    if harness_config:
+        lines.append("**Active Features:**")
+        for feat, enabled in harness_config.features.to_dict().items():
+            status = "✓" if enabled else "✗"
+            lines.append(f"  {status} {feat.replace('_', ' ').title()}")
+        lines.append("")
+    if baseline_manager:
+        baselines = baseline_manager.list_baselines()
+        if baselines:
+            lines.append(f"**Baselines:** {len(baselines)} captured")
+            latest = baseline_manager.get_latest()
+            if latest:
+                lines.append(f"  Latest: {latest.id} @ {latest.commit}")
+        else:
+            lines.append("**Baselines:** None captured yet")
+        lines.append("")
+    lines.append("**Commands:**")
+    lines.append("• /harness status")
+    lines.append("• /harness baseline")
+    lines.append("• /harness features")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
@@ -1114,6 +1221,18 @@ def main() -> None:
         type=str,
         default=None,
         help="SQLite database path for session persistence (enables session resumption on restart)",
+    )
+    parser.add_argument(
+        "--enable-harness",
+        action="store_true",
+        default=False,
+        help="Enable evaluation harness for metrics tracking and baseline comparison",
+    )
+    parser.add_argument(
+        "--harness-config",
+        type=str,
+        default=None,
+        help="Path to harness configuration file (YAML or JSON)",
     )
     args = parser.parse_args()
 
@@ -1183,6 +1302,48 @@ def main() -> None:
     else:
         logger.info("No judge API keys found — scoring disabled")
 
+    # Initialize evaluation harness (optional — for metrics tracking)
+    global harness_enabled, harness_config, evaluation_harness, baseline_manager, metrics_aggregator
+    if args.enable_harness:
+        try:
+            # Load config
+            if args.harness_config:
+                config_path = Path(args.harness_config)
+                if config_path.suffix in (".yaml", ".yml"):
+                    harness_config = HarnessConfig.from_yaml(config_path)
+                else:
+                    harness_config = HarnessConfig.from_json(config_path)
+            else:
+                harness_config = HarnessConfig(project_root=_PROJECT_ROOT)
+            
+            # Sync feature flags with USE_ENHANCED_CONTEXT
+            if USE_ENHANCED_CONTEXT:
+                harness_config.features.tiered_context = True
+                harness_config.features.multi_layer_compaction = True
+                harness_config.features.memory_persistence = True
+            
+            # Initialize components
+            evaluation_harness = EvaluationHarness(harness_config)
+            baseline_manager = BaselineManager(harness_config)
+            metrics_aggregator = MetricsAggregator(
+                bootstrap_samples=harness_config.bootstrap_samples,
+                confidence_level=harness_config.confidence_level,
+            )
+            
+            harness_enabled = True
+            
+            # Log status
+            baselines = baseline_manager.list_baselines()
+            logger.info(
+                "Evaluation harness enabled: %d baselines, features=%s",
+                len(baselines),
+                harness_config.features.to_dict(),
+            )
+            print(f"Evaluation harness enabled ({len(baselines)} baselines)")
+        except Exception as e:
+            logger.warning("Failed to initialize evaluation harness: %s", e)
+            harness_enabled = False
+
     # Configure proxy if HTTPS_PROXY is set (e.g. CSE CUHK HPC cluster)
     builder = Application.builder().token(token)
     proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
@@ -1200,12 +1361,16 @@ def main() -> None:
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("streaming", streaming_command))
     app.add_handler(CommandHandler("memory", memory_command))
+    app.add_handler(CommandHandler("harness", harness_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
+    # Log startup configuration
     model_names = [model_manager.display_name(k) for k in args.models]
     logger.info("Bot started — models: %s, default: %s", model_names, default_model_key)
+    if harness_enabled:
+        logger.info("Harness enabled — use /harness to view status")
     app.run_polling()
 
 
