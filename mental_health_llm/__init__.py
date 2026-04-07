@@ -31,6 +31,13 @@ from mental_health_llm.protocols import (
     MockGenerator,
     MockSessionStore,
 )
+from mental_health_llm.orchestration import (
+    CounselingPipeline,
+    PipelineConfig,
+    TurnState,
+    PipelineTrace,
+    run_pipeline,
+)
 
 __all__ = [
     "SkillRouter",
@@ -70,4 +77,10 @@ __all__ = [
     "MockSafetyGate",
     "MockGenerator",
     "MockSessionStore",
+    # Orchestration
+    "CounselingPipeline",
+    "PipelineConfig",
+    "TurnState",
+    "PipelineTrace",
+    "run_pipeline",
 ]

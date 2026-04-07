@@ -80,6 +80,21 @@ from evaluation.harness.runner import EvaluationHarness
 from evaluation.harness.baseline import BaselineManager
 from evaluation.harness.metrics import MetricsAggregator
 
+# Orchestration pipeline (Phase A)
+from mental_health_llm.orchestration import (
+    TurnState,
+    PipelineConfig,
+    CounselingPipeline,
+    PipelineTrace,
+    run_pipeline,
+)
+from mental_health_llm.orchestration.state import (
+    CrisisLevel,
+    GuardAction,
+    GenerationResult,
+    PersistResult,
+)
+
 from scripts.evaluation.judge_scoring import (
     init_judges,
     score_exchange_async,
@@ -107,6 +122,7 @@ logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 6  # Kept for backward compatibility; EnhancedContextManager uses hot_size
 USE_ENHANCED_CONTEXT = True  # Toggle to enable claw-code context management
+USE_ORCHESTRATION = True  # Toggle to enable pipeline orchestration (Phase A)
 
 # ── Harness Globals ───────────────────────────────────────────────
 
@@ -115,6 +131,12 @@ evaluation_harness: EvaluationHarness | None = None
 baseline_manager: BaselineManager | None = None
 metrics_aggregator: MetricsAggregator | None = None
 harness_enabled: bool = False
+
+# ── Orchestration Globals ─────────────────────────────────────────
+
+pipeline_config: PipelineConfig | None = None
+counseling_pipeline: CounselingPipeline | None = None
+last_pipeline_traces: dict[int, PipelineTrace] = {}  # user_id -> last trace
 
 # ── Model Registry ────────────────────────────────────────────────
 
@@ -818,6 +840,120 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     history_snapshot = list(history)
     use_streaming = user_streaming_enabled.get(user_id, False)
 
+    # ── Orchestration Pipeline Path (Phase A) ─────────────────────
+    if USE_ORCHESTRATION and counseling_pipeline and not use_streaming:
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING
+        )
+
+        try:
+            # Build generation function that wraps the existing route_and_generate
+            adapters_on = user_adapters_enabled.get(user_id, True)
+            prompt_on = user_prompt_enabled.get(user_id, True)
+
+            def _generation_fn(state, triage, retrieval):
+                """Generate response using existing model infrastructure."""
+                resp, skill = route_and_generate(
+                    state.user_message,
+                    model_key,
+                    state.conversation_history,
+                    adapters_on,
+                    prompt_on,
+                )
+                return GenerationResult(
+                    node_name="generate",
+                    success=True,
+                    duration_ms=0.0,  # Timing handled by pipeline
+                    response=resp,
+                    model_id=model_key,
+                    detected_skill=skill,
+                )
+
+            def _persist_fn(state, generation, guard, triage):
+                """Persist turn using existing save logic."""
+                skill = generation.detected_skill if generation else ""
+                is_crisis = triage.crisis_level in (CrisisLevel.HIGH, CrisisLevel.CRITICAL) if triage else False
+                _save_turn(user_id, state.user_message, state.final_response, skill=skill, is_crisis=is_crisis)
+                return PersistResult(
+                    node_name="persist",
+                    success=True,
+                    duration_ms=0.0,
+                    session_saved=True,
+                    memory_saved=USE_ENHANCED_CONTEXT,
+                )
+
+            # Create per-request pipeline with injected functions
+            request_pipeline = CounselingPipeline(
+                config=pipeline_config,
+                generation_fn=_generation_fn,
+                persist_fn=_persist_fn,
+            )
+
+            # Build state
+            state = TurnState(
+                user_id=user_id,
+                user_message=user_text,
+                conversation_history=history,
+                model_id=model_key,
+            )
+
+            # Run pipeline in thread pool (generation is CPU-bound)
+            state = await asyncio.to_thread(request_pipeline.run, state)
+
+            # Store trace for /trace command
+            last_pipeline_traces[user_id] = state.to_trace()
+
+            response = state.final_response
+            skill_name = state.generation.detected_skill if state.generation else ""
+
+            # Log crisis escalation
+            if state.is_crisis and outcome_logger:
+                outcome_logger.log(
+                    user_id=user_id,
+                    outcome=SessionOutcome.CRISIS_ESCALATED,
+                    skill=skill_name,
+                    model_key=model_key,
+                    turns=len(history) + 1,
+                    crisis_detected=True,
+                )
+
+            logger.info(
+                "User %s [%s] pipeline: %s",
+                user_id,
+                model_key,
+                state.to_trace().summary(),
+            )
+
+        except Exception:
+            logger.exception("handle_message: pipeline error for user %s model %s", user_id, model_key)
+            if outcome_logger:
+                outcome_logger.log(
+                    user_id=user_id,
+                    outcome=SessionOutcome.ERROR,
+                    model_key=model_key,
+                    turns=len(history),
+                )
+            await update.message.reply_text(
+                "Sorry, something went wrong generating a response. "
+                "Please try again or switch models with /model."
+            )
+            return
+
+        if not response or not response.strip():
+            response = (
+                "I'm not sure how to respond to that. "
+                "Could you tell me more about what's on your mind?"
+            )
+
+        await update.message.reply_text(response)
+
+        if _judges_active:
+            asyncio.create_task(
+                _score_in_background(user_id, user_text, response, history_snapshot)
+            )
+        return
+
+    # ── Streaming Path ────────────────────────────────────────────
     if use_streaming and skill_router and model_manager:
         # ── Streaming path ───────────────────────────────────────
         try:
@@ -1222,6 +1358,47 @@ async def harness_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text("\n".join(lines))
 
 
+async def trace_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /trace command — show the last pipeline trace for this user."""
+    user_id = update.effective_user.id
+
+    if not USE_ORCHESTRATION:
+        await update.message.reply_text("Orchestration pipeline is disabled.")
+        return
+
+    trace = last_pipeline_traces.get(user_id)
+    if not trace:
+        await update.message.reply_text("No pipeline trace available yet. Send a message first.")
+        return
+
+    # Build trace report
+    lines = ["🔍 **Last Pipeline Trace**\n"]
+    lines.append(f"Turn: `{trace.turn_id}`")
+    lines.append(f"Duration: {trace.total_duration_ms:.0f}ms")
+    if trace.is_crisis:
+        lines.append("⚠️ **CRISIS DETECTED**")
+    lines.append("")
+    lines.append("**Node Timings:**")
+    for node in trace.nodes:
+        status = "✓" if node.get("success") else "✗"
+        duration = node.get("duration_ms", 0)
+        name = node.get("node", "?")
+        extra = ""
+        if name == "triage":
+            crisis = node.get("crisis_level", "unknown")
+            skill = node.get("detected_skill", "")
+            extra = f" [crisis={crisis}, skill={skill}]"
+        elif name == "guard":
+            action = node.get("action", "?")
+            extra = f" [action={action}]"
+        lines.append(f"  {status} {name}: {duration:.0f}ms{extra}")
+
+    lines.append("")
+    lines.append(f"Response length: {trace.final_response_length} chars")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
@@ -1405,6 +1582,21 @@ def main() -> None:
             logger.warning("Failed to initialize evaluation harness: %s", e)
             harness_enabled = False
 
+    # Initialize orchestration pipeline (Phase A)
+    global pipeline_config, counseling_pipeline
+    if USE_ORCHESTRATION:
+        pipeline_config = PipelineConfig(
+            enable_retrieval=False,  # Phase B — not yet implemented
+            enable_guard=True,
+            enable_memory_persist=USE_ENHANCED_CONTEXT,
+            crisis_escalation_threshold=0.8,
+        )
+        # Pipeline is created without generation_fn / persist_fn here;
+        # those are provided per-request in handle_message to capture user context.
+        counseling_pipeline = CounselingPipeline(config=pipeline_config)
+        logger.info("Orchestration pipeline enabled: %s", pipeline_config)
+        print("Orchestration pipeline enabled (5-node executor)")
+
     # Configure proxy if HTTPS_PROXY is set (e.g. CSE CUHK HPC cluster)
     builder = Application.builder().token(token)
     proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
@@ -1423,6 +1615,7 @@ def main() -> None:
     app.add_handler(CommandHandler("streaming", streaming_command))
     app.add_handler(CommandHandler("memory", memory_command))
     app.add_handler(CommandHandler("harness", harness_command))
+    app.add_handler(CommandHandler("trace", trace_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern=r"^model:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
@@ -1432,6 +1625,8 @@ def main() -> None:
     logger.info("Bot started — models: %s, default: %s", model_names, default_model_key)
     if harness_enabled:
         logger.info("Harness enabled — use /harness to view status")
+    if USE_ORCHESTRATION:
+        logger.info("Orchestration enabled — use /trace to view last pipeline trace")
     app.run_polling()
 
 
