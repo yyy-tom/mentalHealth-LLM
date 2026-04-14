@@ -106,12 +106,7 @@ class EnhancedContextManager:
 
         # Get raw history from session store
         history = self._session_store.restore_history(user_id)
-        metadata = self._session_store.get_session_metadata(user_id)
-
-        # Get crisis indices if available
-        crisis_indices = set()
-        if metadata and "crisis_turns" in metadata:
-            crisis_indices = set(metadata.get("crisis_turns", []))
+        crisis_indices = self._session_store.restore_crisis_flags(user_id)
 
         # Add turns to tiered manager
         for i, (user_msg, asst_msg) in enumerate(history):
