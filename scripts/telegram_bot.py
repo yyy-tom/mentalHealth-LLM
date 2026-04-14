@@ -875,10 +875,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 return GenerationResult(
                     node_name="generate",
                     success=True,
-                    duration_ms=0.0,  # Timing handled by pipeline
+                    duration_ms=0.0,
                     response=resp,
                     model_id=model_key,
-                    detected_skill=skill,
+                    adapter_used=skill,
                 )
 
             def _persist_fn(state, generation, guard, triage):
