@@ -666,15 +666,18 @@ def load_whisper_model(model_size: str = "large-v3") -> None:
     global whisper_model
     gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
     if gpu_count > 0:
-        # Use the last GPU to avoid competing with LLMs assigned round-robin from GPU 0
         whisper_gpu = gpu_count - 1
-        device = f"cuda:{whisper_gpu}"
+        device = "cuda"
         compute_type = "float16"
+        print(f"Loading Whisper model: {model_size} on cuda:{whisper_gpu} ({compute_type})")
+        whisper_model = WhisperModel(
+            model_size, device=device, device_index=whisper_gpu, compute_type=compute_type
+        )
     else:
         device = "cpu"
         compute_type = "int8"
-    print(f"Loading Whisper model: {model_size} on {device} ({compute_type})")
-    whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        print(f"Loading Whisper model: {model_size} on {device} ({compute_type})")
+        whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
     print("Whisper model loaded and ready.")
 
 
