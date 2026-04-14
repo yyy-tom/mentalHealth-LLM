@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "psychoed_01",
+    "title": "What is Depression",
+    "situation": "A 25-year-old user suspects they may have depression but is unsure what it actually is. They want to understand the condition before deciding whether to seek help.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I've been feeling really low for months. Someone told me I might have depression but I don't really know what that means. What is depression exactly?",
+      "So is it just feeling sad? Because I don't always feel sad — sometimes I just feel completely empty and numb.",
+      "How do I know if what I'm experiencing is depression or just a rough patch? Is there a difference?",
+      "What are the treatment options? I'm nervous about medication."
+    ]
+  },
+  {
+    "case_id": "psychoed_02",
+    "title": "Understanding Anxiety Disorders",
+    "situation": "A 22-year-old university student experiences panic attacks and wants to understand what is happening to their body and whether it is dangerous.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I keep having these episodes where my heart races, I can't breathe, and I feel like I'm dying. What is happening to me?",
+      "Someone said it might be a panic attack. What causes those? Why does my body do that?",
+      "Is it dangerous? I'm scared that one day my heart will actually give out during one of these episodes.",
+      "What's the difference between a panic attack and a heart attack? How do I know which one it is?"
+    ]
+  },
+  {
+    "case_id": "psychoed_03",
+    "title": "PTSD Explanation",
+    "situation": "A 34-year-old who experienced a traumatic event two years ago is still having flashbacks and nightmares. They want to understand why this is still happening.",
+    "skill": "psychoeducation",
+    "risk_level": "MEDIUM",
+    "region": "US",
+    "user_turns": [
+      "I went through something traumatic two years ago and I still have nightmares and flashbacks. I thought I'd be over it by now. What's wrong with me?",
+      "What is PTSD exactly? I always thought it was something only soldiers got.",
+      "Why does my brain keep replaying the event even when I don't want it to? It feels like I have no control.",
+      "What treatments actually work for PTSD? I've heard about different therapies but I don't know which one to try."
+    ]
+  },
+  {
+    "case_id": "psychoed_04",
+    "title": "How CBT Works",
+    "situation": "A 29-year-old has been referred to CBT therapy by their doctor but has no idea what it involves. They want to understand the process before committing.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My doctor recommended CBT but I don't know what it is. Can you explain how it works?",
+      "So it's about changing thoughts? But what if my thoughts are accurate — what if my situation really is bad?",
+      "How long does CBT usually take? I'm worried about committing to something long-term.",
+      "What's the difference between CBT and just talking to a friend about your problems?"
+    ]
+  },
+  {
+    "case_id": "psychoed_05",
+    "title": "Sleep and Mental Health",
+    "situation": "A 38-year-old is struggling with insomnia and wants to understand the relationship between sleep and mental health.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I haven't been sleeping well for months. I know it's affecting my mood but I don't understand why sleep is so important for mental health.",
+      "What is sleep hygiene? My doctor mentioned it but didn't explain it properly.",
+      "I've tried going to bed earlier but I just lie there for hours. What's actually happening in my brain when I can't sleep?",
+      "Are sleeping pills safe to use long-term? I'm tempted to just take something to knock me out."
+    ]
+  },
+  {
+    "case_id": "psychoed_06",
+    "title": "Difference Between Sadness and Depression",
+    "situation": "A 20-year-old is confused about whether what they are experiencing is normal sadness or clinical depression, and wants to understand the distinction.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "Everyone feels sad sometimes, right? How do I know if what I'm feeling is just normal sadness or something more serious like depression?",
+      "I've been feeling low for about six weeks. Is that too long for normal sadness?",
+      "What are the signs that someone should actually seek professional help versus just waiting it out?",
+      "If I go to a doctor, what will they actually do? I'm worried they'll just put me on medication straight away."
+    ]
+  },
+  {
+    "case_id": "psychoed_07",
+    "title": "Anxiety vs Stress",
+    "situation": "A 27-year-old professional is unsure whether they have an anxiety disorder or are just experiencing normal work stress. They want to understand the difference.",
+    "skill": "psychoeducation",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I'm always worried about work, money, relationships — basically everything. Is that anxiety or just normal stress? Everyone seems stressed these days.",
+      "What's the actual clinical definition of an anxiety disorder? When does worry become a disorder?",
+      "I've heard about generalised anxiety disorder. What is that exactly and how is it different from just being a worrier?",
+      "Can anxiety go away on its own or does it always need treatment?"
+    ]
+  }
+]

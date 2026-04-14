@@ -1,0 +1,86 @@
+[
+  {
+    "case_id": "prof_01",
+    "title": "Toxic Workplace Dynamics",
+    "situation": "Grace, a 32-year-old, is dealing with a passive-aggressive manager who undermines her in meetings and takes credit for her work. She is unsure whether to escalate or leave.",
+    "skill": "professional-counseling",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My manager constantly undermines me in meetings and takes credit for my ideas. I've tried addressing it directly but nothing changes. I don't know whether to escalate to HR or just leave.",
+      "I've documented some incidents but I'm scared that if I go to HR it will make things worse and I'll be seen as a troublemaker.",
+      "I've been at this company for four years and I don't want to throw that away. But I also can't keep working in this environment. How do I decide what to do?",
+      "What does assertive communication actually look like in this situation? I don't want to come across as aggressive."
+    ]
+  },
+  {
+    "case_id": "prof_02",
+    "title": "Divorce and Co-Parenting Conflict",
+    "situation": "Michael, a 40-year-old, is going through a difficult divorce. He and his ex-wife disagree on parenting decisions and the conflict is affecting their children.",
+    "skill": "professional-counseling",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "My divorce is getting messy. My ex and I can't agree on anything about the kids and every conversation turns into an argument. I'm worried about how this is affecting them.",
+      "She undermines my parenting decisions in front of the children. I try to stay calm but I end up getting defensive and it escalates.",
+      "My kids are 8 and 11. They've started acting out at school. I know it's because of the tension between us but I don't know how to fix it.",
+      "How do I communicate with someone who refuses to cooperate? I can't force her to change but I can't keep going like this."
+    ]
+  },
+  {
+    "case_id": "prof_03",
+    "title": "Career Crossroads",
+    "situation": "Helen, a 35-year-old, has a stable but unfulfilling career in finance. She wants to change careers to something more meaningful but is afraid of the financial and social consequences.",
+    "skill": "professional-counseling",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I've been in finance for ten years and I'm good at it but I hate it. I want to do something more meaningful — maybe social work or counseling — but I'm scared to give up the salary and status.",
+      "My family thinks I'm crazy for even considering it. They sacrificed a lot for me to get this career. I feel guilty for wanting something different.",
+      "I'm 35. Is it too late to start over? I'd have to go back to school and take a massive pay cut. I don't know if I can justify that.",
+      "How do I figure out if this is a genuine calling or just burnout? I don't want to make a huge life change and regret it."
+    ]
+  },
+  {
+    "case_id": "prof_04",
+    "title": "Boundary Setting with Family",
+    "situation": "Amy, a 28-year-old, has an overbearing mother who calls multiple times a day, gives unsolicited advice, and makes Amy feel guilty for having her own life. Amy wants to set boundaries but fears damaging the relationship.",
+    "skill": "professional-counseling",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My mother calls me three or four times a day and gets upset if I don't answer. She gives me unsolicited advice about everything and makes me feel guilty for having my own life.",
+      "I love her but I feel suffocated. Every time I try to create some distance she cries and says I don't care about her. Then I feel terrible and give in.",
+      "I've tried to talk to her about it but she doesn't see anything wrong with her behaviour. She thinks she's just being a caring mother.",
+      "How do I set limits with someone who doesn't respect them? I don't want to hurt her but I need space."
+    ]
+  },
+  {
+    "case_id": "prof_05",
+    "title": "Recovering from Infidelity",
+    "situation": "Tom, a 38-year-old, discovered his wife had an affair six months ago. They are trying to rebuild the relationship but he is struggling with trust, anger, and self-doubt.",
+    "skill": "professional-counseling",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I found out my wife had an affair six months ago. We're trying to work through it but I can't stop thinking about it. I check her phone, I question everything she says. I hate who I've become.",
+      "She says she's sorry and it's over. I want to believe her but I can't. Every time she's late or doesn't answer her phone I spiral.",
+      "I don't know if I can ever trust her again. But I also don't want to end the marriage. We have kids. We have a life together. Is it even possible to rebuild trust after this?",
+      "What does rebuilding trust actually look like in practice? I don't know what I'm supposed to be doing."
+    ]
+  },
+  {
+    "case_id": "prof_06",
+    "title": "Addiction Recovery Support",
+    "situation": "Chris, a 33-year-old, has been sober from alcohol for three months after years of heavy drinking. He is struggling with cravings, social pressure, and rebuilding his self-image.",
+    "skill": "professional-counseling",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I've been sober for three months. It's the longest I've gone in years. But the cravings are still really strong, especially in social situations.",
+      "My friends still drink and they don't really understand why I stopped. They keep offering me drinks and saying 'just one won't hurt.' It's exhausting.",
+      "I'm also struggling with who I am without alcohol. I used it to socialise, to relax, to cope with stress. I don't know how to do those things sober.",
+      "How do I handle social situations where everyone is drinking without feeling like an outsider or having to explain myself every time?"
+    ]
+  }
+]

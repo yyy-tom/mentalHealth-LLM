@@ -1,0 +1,902 @@
+[
+  {
+    "case_id": "case_01",
+    "title": "Exam Anxiety",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I know I need to study for my finals, but every time I try, I get this wave of panic and my mind just goes blank or starts imagining the worst-case scenarios. I end up wasting hours just feeling guilty and paralyzed. How can I break this cycle and actually start focusing without the constant anxiety?",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.7194267984578837,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.1050107552226671,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3550293183691193,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.303210738148823,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "Thank you, that helps to hear. It's like my brain just jumps straight to \"you're going to fail everything and disappoint everyone\" before I've even opened a book. Breaking it into smaller chunks makes sense logically, but in the moment, that logic just disappears. I like the idea of setting really small goals\u2014maybe just reviewing one topic at a time instead of thinking about the whole exam. And you're right, I should try to remember past times when I was stressed about something and it ended up being fine. I guess I just forget those moments when the anxiety hits. The mindfulness stuff is hard for me because my mind races so fast, but maybe if I start with just a minute of deep breathing before I study, it could help slow things down. What do you suggest if the anxious thoughts keep coming back even after I try to breathe or break things down?",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.8164712141640125,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.7566994874229114,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.9721795677048455,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.1669388326294161,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "Thanks, that's really helpful advice. I think the positive self-talk is something I seriously neglect\u2014when I'm in that anxious state, my inner voice is pretty harsh, telling me I'm not prepared enough or that I'm going to mess up. I never really thought about actively fighting back with something more balanced. The journal idea is interesting too. I tend to just let the thoughts swirl around in my head, and writing them down might actually force me to see how extreme they are. Like, when I actually see \"I'm going to fail and never get a job\" on paper, it might look more ridiculous than it feels in my mind. I do have a question about the physical activity part\u2014I know exercise helps, but when I'm stressed, I feel like I don't have time to work out because I \"should\" be studying. How do you balance that? Like, how do you convince yourself that taking 20 minutes to move your body isn't wasting time, but actually helping you study better?",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.5019218196852706,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.1097972194380703,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.2986379748036034,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.5853552881033623,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.0265359696838636
+      },
+      "therapeutic_arc": {
+        "score": 1.1988376506866485
+      },
+      "repetition_avoidance": {
+        "score": 1.6498844377795232
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_02",
+    "title": "Social Anxiety",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "Ever since I started my new job, I\u2019ve been terrified of speaking up in meetings. I constantly worry that people are judging me or noticing every mistake. Even when I have something helpful to say, I stay quiet. Social interactions drain me, and I often leave early just to escape the pressure. It\u2019s starting to affect my confidence.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.6249414806032167,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.3004406220406968,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.6692656838759088,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.8894304566778266,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "I can see how overwhelming it must be for you to feel like you're always under scrutiny at work. It sounds like these experiences are really impacting your self-confidence and overall well-being. Let's explore this further\u2014what goes through your mind during these social interactions? What thoughts come up that make you hesitant to speak up?",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.086498759678061,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.885819251832808,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.778139394988227,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.420250516517992,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "Yeah... I guess the main thought is that whatever I say is going to reveal that I don't really belong here. Like, if I stay quiet, I can just blend in and no one will notice me, but if I speak, they'll finally see that I'm not as competent as everyone else. I feel like I have to sound perfect or my input isn't valid. And in the moment, my mind just races\u2014I'll start forming a sentence, then second-guess every word, and by the time I've decided it's safe to say something, the conversation has already moved on. Then I just feel frustrated with myself for missing the chance.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.2354794998117815,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.416594545112627,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.1727458433801479,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.096716376833464
+      },
+      "therapeutic_arc": {
+        "score": 1.8474943663474597
+      },
+      "repetition_avoidance": {
+        "score": 1.603726031366891
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_03",
+    "title": "Relationship Stress",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I\u2019ve been arguing with my partner a lot lately, and it makes me anxious that our relationship might fall apart. After every disagreement, I replay everything in my head and wonder what I did wrong. I overthink texts and tone, sometimes pulling away to protect myself, other times seeking reassurance. I feel frustrated, sad, and guilty, and I don\u2019t know how to communicate without making things worse.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.8871282732743802,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.8097317866938178,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.6162280914547007,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "I can try. The last argument we had was about something small, honestly\u2014it was about plans for the weekend. I thought we had agreed to keep it free, and they made plans with friends without checking with me first. It started off okay, but then they said I was being controlling, and I just... shut down. I didn't yell or anything. I just got really quiet and said \"it's fine\" even though it wasn't. Then later that night, I sent a text asking if they were mad at me, and they said they were tired and we'd talk tomorrow. And I just lay there replaying everything, wondering if I was actually being controlling, or if I overreacted, or if this is going to turn into a huge thing. The pattern is usually the same\u2014something small triggers it, one of us gets defensive, and then I either go silent or start anxiously seeking reassurance. I hate it.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.4585343772083537,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.632040631273227,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.909404664252995,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.6985197523642461,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "I think if I talked more openly in the moment, maybe things wouldn't build up the way they do. Like with the weekend plans\u2014if I had just said \"Hey, I'm a little disappointed because I thought we were going to keep the weekend open,\" instead of saying \"it's fine\" and shutting down, maybe they wouldn't have felt attacked and called me controlling. But honestly, the reason I shut down is because I'm scared that if I express disappointment, it'll turn into a fight. So I tell myself it's safer to just swallow it. But then it comes out sideways later\u2014either in my anxious texts or in the way I act distant\u2014and that probably confuses them even more. I guess I need to learn how to say things calmly before the resentment builds. It's just hard in the moment when I feel that pit in my stomach.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.9417069003107774,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.657352145256762,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.7845718362149237,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.1258243836556623,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.2278982756515469
+      },
+      "therapeutic_arc": {
+        "score": 1.289387963602107
+      },
+      "repetition_avoidance": {
+        "score": 1.0797919769236275
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_04",
+    "title": "Workplace Burnout",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I feel completely overwhelmed at work. The workload never ends, and I\u2019m exhausted all the time. I\u2019ve been skipping meals, staying up late to finish tasks, and I hardly have energy for anything outside of work. I\u2019m irritable, drained, and starting to feel hopeless. It\u2019s affecting my family and my ability to function.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.3127908863610303,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.1810014294097293,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3579736031100922,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.7156844442644004,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "Thank you for all of that. I know you're giving me good advice, and I appreciate it\u2014I really do. It's just... I've heard a lot of this before, and in theory, I know it's what I should be doing. But when I'm in the thick of it, I can't seem to make myself do any of it. It's like my brain just freezes. Even the idea of making a to-do list feels overwhelming right now because I look at everything and I don't even know where to start. And delegating\u2014I don't even know how to begin that conversation without feeling like I'm admitting failure. I'm scared that if I go to my boss and say I need help, they'll see me as weak or incapable. I've built my whole reputation on being reliable and handling things, and the thought of losing that is terrifying.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.4448321789700844,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.4501809671168826,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.2895070307714878,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.3469778220491135,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "It's like... part of me hears what you're saying, and I want to believe it. That asking for help could be seen as resourceful instead of weak. But there's this voice in my head that's been telling me for years that I have to handle everything on my own, and it's really hard to quiet that voice. When you talk about breaking things down into smaller pieces, I think that could help. Even just saying it out loud\u2014maybe I don't have to fix everything all at once. Maybe I just need to figure out what one small thing I can do tomorrow. But even that feels hard right now because everything is so jumbled in my head. And mindfulness... I've heard of it, but I'll be honest, the idea of sitting still with my thoughts sounds kind of terrifying. My mind is just racing all the time. When I try to slow down, it almost makes the anxiety worse because then I'm not distracting myself with work. Does that make sense?",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.7280353852465935,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.6891310056669884,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.251138648198097,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.7291267979503493
+      },
+      "therapeutic_arc": {
+        "score": 1.1634024937619283
+      },
+      "repetition_avoidance": {
+        "score": 1.379455441757648
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_05",
+    "title": "Grief",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "Since losing my family member, everything feels heavy. I get emotional out of nowhere, and memories keep hitting me when I least expect it. I can barely focus on daily tasks, and I\u2019ve been isolating myself because social interactions take too much energy. I feel empty, guilty, and like I don\u2019t know how to move forward.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.719999759854093,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.6369497437746463,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.7646142509898746,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "Thank you. I know you're trying to be helpful, and I appreciate that. I just\u2026 I don't think it's a medical thing. It's grief. It's been like this since the funeral\u2014the waves keep coming, and I can't predict when they'll hit. I've thought about support groups, but the idea of being around people right now, even online, feels exhausting. I don't have the energy to explain myself or to hear other people's stories when I can barely carry my own.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.9228519201898098,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.8559999115462449,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3090480719641044,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.1121002439040377,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "I hear what you're saying about writing things down. I used to journal years ago, before all this. Maybe that's something I could try again\u2014just getting it out of my head, even if no one else reads it. The boundaries thing is harder, though. When people reach out\u2014coworkers, friends\u2014they mean well. They ask how I'm doing, and I don't know what to say. If I'm honest, it makes them uncomfortable. If I say \"I'm fine,\" I feel like I'm lying to myself and to them. Most days I just avoid the situation entirely by not answering. I guess I'm still figuring out how to exist in the world when inside I feel so broken.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.3954530480590819,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.3477408759757028,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.2909828435863266,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.876367626472669
+      },
+      "therapeutic_arc": {
+        "score": 1.3146778807984778
+      },
+      "repetition_avoidance": {
+        "score": 1.65543866529488
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_06",
+    "title": "Low Self-esteem",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I constantly feel like I\u2019m not good enough. In social situations or group projects, I worry that people are judging me, so I usually avoid participating. I compare myself to others and always come up short. I get anxious about making mistakes and it affects my academics and relationships. I feel isolated and full of self-doubt.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.4756319010606642,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.9945475897405436,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.5388518525873989,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.3448801664980525,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "(crying softly) I've tried telling myself positive things, but it feels fake. Like I'm lying to myself. And when I do try to join conversations, I just end up overthinking everything I say afterward, convinced I said something stupid. My group project partner probably thinks I'm useless \\- I couldn't even speak up during our presentation.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.3266275076939835,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.6413681341631507,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3427416085229353,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.6645859902235407,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "(looking up slightly) I didn't know there might be free options... maybe I could look into what my university offers. (pauses, then speaks more quietly) It's just... even the thought of reaching out for help makes me feel like I'm admitting defeat, you know? Like everyone else can handle life but I'm too weak.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.9778228836024772,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.4794005051403973,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.2993207591572835,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.5095262936764646
+      },
+      "therapeutic_arc": {
+        "score": 1.090909412173794
+      },
+      "repetition_avoidance": {
+        "score": 1.0471163754247346
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_07",
+    "title": "Perfectionism",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I feel like everything I do has to be perfect. I spend hours revising assignments and checking every detail because I\u2019m terrified of making mistakes. Even small imperfections make me feel guilty or frustrated. It\u2019s taking over my time, affecting my relationships, and I can\u2019t relax because I\u2019m always thinking about what I could do better.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.1896491303506593,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.7074460417030901,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.872079364362964,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.502159966799684,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "It's always kind of been there, but it got so much worse when I started university. Everything feels like it matters more now\u2014like if I mess up, it's going to follow me forever. One bad grade could ruin my GPA, and then what if I can't get into grad school, or I can't get a good job? It spirals so fast in my head. I remember in high school, I could still let things go sometimes. I'd finish an assignment and hand it in, even if it wasn't perfect. Now I'll re-read the same paragraph ten times, change it, change it back, and still feel like it's wrong when I finally submit it. And then I just lie awake thinking about all the things I could have done differently.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.143527706151957,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.461619286506537,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.6091143450991372,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "It affects everything, honestly. My friends will ask me to hang out, and I'll say no because I \"have to study\"\u2014but really, I've already studied for hours, I just can't convince myself it's enough. So I stay in my room, staring at the same notes, while they're out having fun. And then I feel guilty for missing out, but I also feel guilty for even wanting to go. Even when I'm not working, I'm thinking about work. I'll be trying to watch a show or eat dinner, and my brain is just running through checklists: Did I cite that correctly? Should I email my professor about that one comment? What if I misunderstood the assignment? And group projects are the worst. I hate relying on other people because they don't do things the way I would. I end up redoing their work or just doing it all myself, and then I resent them for it, but I also can't bring myself to trust them with it. It's exhausting.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.9407797022344981,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.0914810219428197,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.8007218193601946,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.681710369026575
+      },
+      "therapeutic_arc": {
+        "score": 1.5369703304087952
+      },
+      "repetition_avoidance": {
+        "score": 1.266825189952543
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_08",
+    "title": "Depressive Episode",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "For weeks now, I\u2019ve felt this deep sense of hopelessness. It\u2019s like every day is covered in a gray fog. I\u2019ve lost interest in everything I used to enjoy, and even basic tasks feel impossible. I\u2019m not eating much, I sleep a lot but never feel rested, and I can\u2019t concentrate at work. I just feel like a failure and want to withdraw from everyone.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.720961798579808,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.1915521735958765,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.5147652506691052,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.5337237063292064,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "I... I'm safe. I'm not going to hurt myself, if that's what you're asking. It's more like... I just don't see the point. I'm not actively suicidal, I just feel so empty and tired all the time. I know you're worried, and I appreciate that. I've thought about reaching out to someone, but even picking up the phone feels like too much right now. I don't know what they could even say.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.9558529403781941,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3433890507510908,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.5805861130502983,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "I don't even know where to start. Everything feels equally impossible. The thought of going to work makes me nauseous, but the thought of calling in sick again makes me feel guilty. I haven't touched my guitar in months\u2014I used to play every weekend. Now it just sits in the corner collecting dust. Maybe... maybe that's something? I don't know if I could play it, but just looking at it makes me sad. Like I'm mourning the person I used to be.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.2586518805301314,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.9926278393448205,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.9505185698367669,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.3784447914486329,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.6389494948660053
+      },
+      "therapeutic_arc": {
+        "score": 1.6089702114381723
+      },
+      "repetition_avoidance": {
+        "score": 1.1528392685496347
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_09",
+    "title": "Depression with Irritability",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "Lately, I feel constantly on edge and irritated, even over small things. I snap at people\u2014employees, family, customers\u2014and then feel terrible afterward. Underneath the anger, there\u2019s this heavy sadness I can\u2019t shake. I can\u2019t sleep well, I\u2019m restless, and I keep blaming myself for not being able to \u2018get it together.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.8425108000751513,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.6193790301196258,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.8586264786305584,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.6103536721951777,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "(sighs heavily) I don't even know where to start with that. When I say \"get it together,\" I mean... I'm a grown man. I'm supposed to be able to handle stress. I manage a whole store, I have a family, I have responsibilities. And I'm over here losing my temper because someone left a cart in the wrong spot or my kid left a light on. It's humiliating. I see the way people look at me after I snap\u2014like they're walking on eggshells\u2014and I hate it. I hate myself for it. Triggers? Everything. Nothing. I'll be fine one minute and then something tiny happens and I just... explode. And then the sadness hits right after, like a wave. It's like I'm angry at the world and then angry at myself for being angry. I've tried the deep breathing stuff. My wife bought me an app. But when I'm in that moment, I can't think about breathing. I can't think at all. I just react. And then later I'm lying in bed at 2 a.m. replaying it all, hating myself, and I can't shut my brain off.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.0805718961279436,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.4041560570046732,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.0994767423858325,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 2.0,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "(crosses arms, then uncrosses them\u2014can't seem to get comfortable) Yeah, okay. That... actually makes some sense. What goes through my mind right before I snap? Usually it's something like, \"Why can't anyone just do things right?\" or \"Now I have to fix this too.\" Like I'm already carrying so much, and every little thing someone else does wrong feels like another weight on my back. And yeah, afterward it's definitely \"I'm such a jerk\" or \"What's wrong with me?\" I don't give myself any grace at all. The sleep thing... I've tried cutting out coffee after dinner. Doesn't seem to help. My brain just won't shut up. My wife will be asleep next to me and I'm just staring at the ceiling, replaying every stupid thing I said that day. I guess I'm open to trying something. I'm tired of feeling like this. Tired of being tired. Tired of being the guy everyone's afraid to talk to.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.9587218778231843,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.9116655293611795,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.3875141254026615,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.1379251664941876,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.8780095992040406
+      },
+      "therapeutic_arc": {
+        "score": 1.946949445297994
+      },
+      "repetition_avoidance": {
+        "score": 1.0856534520678789
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  },
+  {
+    "case_id": "case_10",
+    "title": "Chronic, Low-Grade Depression",
+    "risk_level": "UNKNOWN",
+    "skill": "UNKNOWN",
+    "turns": [
+      {
+        "turn_index": 1,
+        "user_message": "I\u2019ve felt low for as long as I can remember. It\u2019s not overwhelming sadness, but this constant dull gloom that never goes away. I function well enough, but I don\u2019t really feel joy or pride in my accomplishments. I often feel inadequate and like a burden to others, so I keep my social life small. It just feels like this is my default state.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.5659904633166137,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.1492125184683837,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.8406021652572315,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.8458344293069877,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 2,
+        "user_message": "I've never heard that term before\u2014dysthymia. It's strange to think that this... this fog I've always known might actually have a name. I've tried some of the things you mentioned. Exercise, eating well. I do them, and they're fine, but they don't really change the underlying feeling. It's like putting a bandage on something that's always there. The beliefs about myself... I don't even know where to start with that. I've always just assumed I'm not as good as other people. When I finish a piece of writing, I don't feel proud\u2014I just feel relieved that no one noticed how flawed it is. And with friends, I'm always waiting for them to realize they're better off without me.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.2083914644997629,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.5552823780987315,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.629803593494944,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.3450566289400592,
+            "justification": "Placeholder"
+          }
+        }
+      },
+      {
+        "turn_index": 3,
+        "user_message": "(reflects for a moment) I hear what you're saying about reframing, but I have to be honest\u2014when I try to tell myself something positive, it feels like I'm lying. Like I'm just putting on a costume. The negative thoughts feel truer, even if they're painful. I've thought about therapy before. It's just... hard to justify, I guess? I'm functioning. I'm not in crisis. There are people who have it so much worse. Part of me feels like I should just be able to handle this on my own.",
+        "counselor_response": "[Placeholder response]",
+        "scores": {
+          "empathy": {
+            "score": 1.9524330410852575,
+            "justification": "Placeholder"
+          },
+          "cbt_techniques": {
+            "score": 1.503137940200887,
+            "justification": "Placeholder"
+          },
+          "guided_discovery": {
+            "score": 1.291798205442082,
+            "justification": "Placeholder"
+          },
+          "safety_awareness": {
+            "score": 1.6192960887794583,
+            "justification": "Placeholder"
+          }
+        }
+      }
+    ],
+    "coherence_scores": {
+      "memory": {
+        "score": 1.729931069089976
+      },
+      "therapeutic_arc": {
+        "score": 1.201151063389696
+      },
+      "repetition_avoidance": {
+        "score": 1.311716291300895
+      }
+    },
+    "evaluation_mode": "placeholder",
+    "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+  }
+]

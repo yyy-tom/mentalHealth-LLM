@@ -1,0 +1,159 @@
+{
+  "model": "qwen-ft",
+  "test_suite": "all",
+  "timestamp": "2026-04-14T09:35:56.872187+00:00",
+  "commit": "3d53c2a",
+  "features": {
+    "compaction": true,
+    "response_guard": true,
+    "dynamic_prompts": true,
+    "session_store": true,
+    "tiered_context": true,
+    "multi_layer_compaction": true,
+    "memory_persistence": true
+  },
+  "metrics": {
+    "dimensions": {
+      "empathy": {
+        "mean": 1.602,
+        "std": 0.325,
+        "median": 1.595,
+        "n": 30,
+        "ci_lower": 1.489,
+        "ci_upper": 1.717
+      },
+      "cbt_techniques": {
+        "mean": 1.602,
+        "std": 0.286,
+        "median": 1.637,
+        "n": 30,
+        "ci_lower": 1.512,
+        "ci_upper": 1.705
+      },
+      "guided_discovery": {
+        "mean": 1.548,
+        "std": 0.27,
+        "median": 1.527,
+        "n": 30,
+        "ci_lower": 1.455,
+        "ci_upper": 1.654
+      },
+      "safety_awareness": {
+        "mean": 1.551,
+        "std": 0.285,
+        "median": 1.583,
+        "n": 30,
+        "ci_lower": 1.447,
+        "ci_upper": 1.646
+      }
+    },
+    "coherence": {
+      "memory": {
+        "mean": 1.539,
+        "std": 0.314,
+        "median": 1.66,
+        "n": 10,
+        "ci_lower": 1.344,
+        "ci_upper": 1.703
+      },
+      "therapeutic_arc": {
+        "mean": 1.42,
+        "std": 0.3,
+        "median": 1.302,
+        "n": 10,
+        "ci_lower": 1.25,
+        "ci_upper": 1.593
+      },
+      "repetition_avoidance": {
+        "mean": 1.323,
+        "std": 0.241,
+        "median": 1.289,
+        "n": 10,
+        "ci_lower": 1.19,
+        "ci_upper": 1.465
+      }
+    },
+    "overall": {
+      "mean": 1.575,
+      "std": 0.29,
+      "median": 1.597,
+      "n": 120,
+      "ci_lower": 1.523,
+      "ci_upper": 1.628
+    },
+    "by_risk_level": {
+      "UNKNOWN": {
+        "empathy": {
+          "mean": 1.602,
+          "std": 0.325,
+          "median": 1.595,
+          "n": 30,
+          "ci_lower": 1.489,
+          "ci_upper": 1.717
+        },
+        "cbt_techniques": {
+          "mean": 1.602,
+          "std": 0.286,
+          "median": 1.637,
+          "n": 30,
+          "ci_lower": 1.512,
+          "ci_upper": 1.705
+        },
+        "guided_discovery": {
+          "mean": 1.548,
+          "std": 0.27,
+          "median": 1.527,
+          "n": 30,
+          "ci_lower": 1.455,
+          "ci_upper": 1.654
+        },
+        "safety_awareness": {
+          "mean": 1.551,
+          "std": 0.285,
+          "median": 1.583,
+          "n": 30,
+          "ci_lower": 1.447,
+          "ci_upper": 1.646
+        }
+      }
+    },
+    "by_skill": {
+      "UNKNOWN": {
+        "empathy": {
+          "mean": 1.602,
+          "std": 0.325,
+          "median": 1.595,
+          "n": 30,
+          "ci_lower": 1.489,
+          "ci_upper": 1.717
+        },
+        "cbt_techniques": {
+          "mean": 1.602,
+          "std": 0.286,
+          "median": 1.637,
+          "n": 30,
+          "ci_lower": 1.512,
+          "ci_upper": 1.705
+        },
+        "guided_discovery": {
+          "mean": 1.548,
+          "std": 0.27,
+          "median": 1.527,
+          "n": 30,
+          "ci_lower": 1.455,
+          "ci_upper": 1.654
+        },
+        "safety_awareness": {
+          "mean": 1.551,
+          "std": 0.285,
+          "median": 1.583,
+          "n": 30,
+          "ci_lower": 1.447,
+          "ci_upper": 1.646
+        }
+      }
+    }
+  },
+  "evaluation_mode": "placeholder",
+  "placeholder_reason": "Real evaluation failed at import: No module named 'torch'"
+}

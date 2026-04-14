@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "empathy_01",
+    "title": "Loneliness After Moving Cities",
+    "situation": "Chloe, a 26-year-old, moved to Hong Kong for work six months ago and feels profoundly lonely. She has no close friends in the city and feels disconnected from her life back home.",
+    "skill": "empathetic-listening",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I moved here six months ago and I still feel completely alone. I go to work, come home, and that's it. I don't know how to make friends as an adult.",
+      "I try to join things — I went to a few meetups — but I always feel like an outsider. Like everyone already has their people and there's no room for me.",
+      "Back home I had friends I'd known for years. Here I have to start from scratch and it just feels exhausting. I miss feeling known.",
+      "Sometimes I wonder if I made a mistake moving here. But I can't go back now. I just feel stuck."
+    ]
+  },
+  {
+    "case_id": "empathy_02",
+    "title": "Grief After Pet Loss",
+    "situation": "Daniel, a 42-year-old, lost his dog of 12 years last week. He feels embarrassed about how deeply he is grieving and worries others will not understand.",
+    "skill": "empathetic-listening",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My dog died last week. I know it sounds silly but I'm devastated. I can't stop crying and I can't focus on anything.",
+      "People keep saying 'it was just a dog' and that makes it worse. He was my companion for 12 years. He was there through my divorce, my dad's death, everything.",
+      "I feel embarrassed about how much I'm struggling. Like I should be able to handle this better. It's not like I lost a person.",
+      "The house feels so empty. I keep expecting to hear him. I don't know how to get used to him not being there."
+    ]
+  },
+  {
+    "case_id": "empathy_03",
+    "title": "Feeling Overwhelmed as a New Parent",
+    "situation": "Sarah, a 31-year-old, is three months into motherhood and feels overwhelmed, guilty, and disconnected. She loves her baby but is struggling more than she expected.",
+    "skill": "empathetic-listening",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I love my baby but I'm not enjoying this the way I thought I would. I feel guilty saying that. I'm exhausted all the time and I feel like I'm failing.",
+      "Everyone says this is the best time of your life. But I just feel lost. I don't recognise myself anymore. I used to have a career, hobbies, a sense of who I was.",
+      "My husband tries to help but he doesn't really get it. He goes back to work and has his normal life. I feel completely alone in this.",
+      "I'm scared to tell anyone how I really feel because I don't want them to think I'm a bad mother. But I needed to say it to someone."
+    ]
+  },
+  {
+    "case_id": "empathy_04",
+    "title": "Feeling Invisible in a Relationship",
+    "situation": "Kevin, a 35-year-old, feels emotionally invisible in his long-term relationship. His partner rarely asks how he is doing and he has stopped sharing his feelings.",
+    "skill": "empathetic-listening",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I've been with my partner for five years but lately I feel completely invisible. They never ask how I'm doing. I've stopped sharing things because it doesn't seem to matter.",
+      "I don't think they're a bad person. They're just... not present. And I don't know how to bring it up without it turning into a fight.",
+      "I've started to wonder if this is just what long-term relationships become. Maybe I'm expecting too much.",
+      "I just miss feeling like someone actually sees me. Is that too much to ask for?"
+    ]
+  },
+  {
+    "case_id": "empathy_05",
+    "title": "Caregiver Exhaustion",
+    "situation": "Linda, a 50-year-old, has been caring for her elderly mother with dementia for two years. She is exhausted, resentful, and then guilty about feeling resentful.",
+    "skill": "empathetic-listening",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I've been caring for my mother for two years. She has dementia and doesn't recognise me anymore. I'm exhausted and I feel terrible for saying this, but sometimes I resent her.",
+      "I gave up my job to do this. My siblings barely help. I feel completely alone in this and like my own life has disappeared.",
+      "I feel guilty for feeling resentful. She's my mother. She can't help it. But I'm so tired I don't know how much longer I can do this.",
+      "I just needed to say all of this out loud to someone who won't judge me. I don't have anyone I can be honest with about this."
+    ]
+  },
+  {
+    "case_id": "empathy_06",
+    "title": "Feeling Like a Burden",
+    "situation": "Alex, a 23-year-old, has been struggling with depression and increasingly feels like a burden to their friends and family. They have started withdrawing to protect others from their problems.",
+    "skill": "empathetic-listening",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I've been pulling away from my friends because I feel like I'm too much. Like my problems are too heavy and I'll drag them down if I keep sharing.",
+      "My friend checked in on me yesterday and I said I was fine. I wasn't. But I didn't want to burden her again. She has her own problems.",
+      "I know people say they care but I can't shake the feeling that they'd be relieved if I just stopped reaching out.",
+      "I just feel so alone but I also feel like I deserve to be alone because I'm too much to handle."
+    ]
+  },
+  {
+    "case_id": "empathy_07",
+    "title": "Emotional Numbness After Trauma",
+    "situation": "Rachel, a 29-year-old, experienced a traumatic event eight months ago. She no longer feels sad or distressed — just completely numb and disconnected from her life.",
+    "skill": "empathetic-listening",
+    "risk_level": "MEDIUM",
+    "region": "US",
+    "user_turns": [
+      "Something bad happened to me eight months ago. I don't want to go into details. But now I just feel nothing. Completely numb. Is that normal?",
+      "I used to feel things deeply — joy, sadness, excitement. Now it's like I'm watching my life through glass. I'm there but not really there.",
+      "People keep asking if I'm okay and I say yes because I don't know how to explain that I don't feel anything. It's not sadness. It's just... absence.",
+      "I'm scared this is permanent. What if I never feel things properly again?"
+    ]
+  }
+]

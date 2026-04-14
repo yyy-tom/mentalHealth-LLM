@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "general_01",
+    "title": "General Stress and Overwhelm",
+    "situation": "A 30-year-old is feeling generally overwhelmed by life — work, finances, relationships — without any single acute crisis. They just need support and perspective.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I just feel overwhelmed by everything lately. Work is stressful, money is tight, and my relationship feels distant. Nothing is catastrophically wrong but everything feels heavy.",
+      "I don't even know what I need. I just needed to say it out loud to someone. I feel like I'm just going through the motions.",
+      "I used to have more energy and enthusiasm for life. Now I just feel flat. Is this just what adulthood is?",
+      "What are some practical things I can do when everything feels like too much?"
+    ]
+  },
+  {
+    "case_id": "general_02",
+    "title": "Motivation and Procrastination",
+    "situation": "A 24-year-old student is struggling with chronic procrastination and low motivation. They feel stuck in a cycle of avoidance and self-criticism.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I have so much I need to do but I can't make myself start anything. I procrastinate, then feel guilty, then procrastinate more to avoid the guilt. It's a terrible cycle.",
+      "I've tried productivity techniques — timers, to-do lists, apps — but nothing sticks. I start strong and then fall off after a few days.",
+      "I think part of it is fear of failure. If I don't try, I can't fail. But I know that's not a healthy way to think.",
+      "How do I break this cycle? I feel like I've been stuck in it for years."
+    ]
+  },
+  {
+    "case_id": "general_03",
+    "title": "Adjusting to Retirement",
+    "situation": "Robert, a 62-year-old, retired six months ago after a 35-year career. He expected to feel relieved but instead feels purposeless and lost.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I retired six months ago and I thought I'd be happy. But I feel completely lost. My whole identity was tied to my work and now I don't know who I am.",
+      "My wife is still working. My friends are still working. I feel like I've been left behind somehow, even though I chose this.",
+      "I have plenty of hobbies but they don't fill the void the way I thought they would. I miss feeling useful and needed.",
+      "Is this normal? How do people find meaning after they stop working?"
+    ]
+  },
+  {
+    "case_id": "general_04",
+    "title": "Imposter Syndrome",
+    "situation": "A 29-year-old has recently been promoted to a senior role and is experiencing intense imposter syndrome, convinced they do not deserve the position.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I just got promoted but I feel like a fraud. I'm convinced my colleagues will soon realise I don't know what I'm doing and I don't deserve to be here.",
+      "When I succeed at something, I attribute it to luck. When I make a mistake, I take it as proof that I'm not good enough. I can't seem to take credit for anything.",
+      "I've read about imposter syndrome but knowing what it is doesn't make it go away. I still feel it every day.",
+      "How do I start believing that I actually belong in this role?"
+    ]
+  },
+  {
+    "case_id": "general_05",
+    "title": "Social Media and Self-Comparison",
+    "situation": "A 21-year-old is struggling with constant self-comparison triggered by social media. They feel inadequate compared to peers who seem to be achieving more.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I spend too much time on social media and it always makes me feel worse about myself. Everyone seems to be doing more, achieving more, living better lives than me.",
+      "I know it's not real — people only post their highlights. But knowing that doesn't stop me from feeling inadequate when I see it.",
+      "I've tried deleting the apps but I always reinstall them. I feel like I'm missing out if I'm not on them.",
+      "How do I have a healthier relationship with social media without cutting it out completely?"
+    ]
+  },
+  {
+    "case_id": "general_06",
+    "title": "Difficulty Asking for Help",
+    "situation": "A 27-year-old has always been fiercely independent and struggles to ask for help even when they need it. This is affecting their relationships and wellbeing.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I find it really hard to ask for help. I always try to handle everything myself and I end up exhausted and resentful that no one helps — even though I never asked.",
+      "I think it comes from growing up in a family where showing weakness was not acceptable. Asking for help felt like admitting failure.",
+      "My partner gets frustrated because I won't let them support me. They say I push them away. I don't mean to but I don't know how to let people in.",
+      "How do I start letting people help me when it feels so uncomfortable and vulnerable?"
+    ]
+  },
+  {
+    "case_id": "general_07",
+    "title": "Life Transition - Empty Nest",
+    "situation": "Patricia, a 52-year-old, has just had her youngest child leave for university. She is struggling with the empty nest transition and a loss of purpose.",
+    "skill": "general-support",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My youngest just left for university last month. I know I should be proud — and I am — but the house feels so empty and I don't know what to do with myself.",
+      "I've been a mother first for 25 years. Now that they don't need me in the same way, I don't know who I am outside of that role.",
+      "My husband and I are fine but we've been so focused on the kids for so long that we don't really know how to just be a couple anymore.",
+      "How do I find a new sense of purpose at this stage of life? I feel like I'm starting over but I don't know where to begin."
+    ]
+  }
+]

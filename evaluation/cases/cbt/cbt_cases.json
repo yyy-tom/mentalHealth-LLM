@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "cbt_01",
+    "title": "Catastrophizing About Job Interview",
+    "situation": "Priya, a 26-year-old job seeker, has an important interview tomorrow and is catastrophizing about the outcome. She believes one bad interview will ruin her entire career.",
+    "skill": "cbt-therapy",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "I have a big interview tomorrow and I'm convinced I'm going to fail it. If I mess this up, my career is over. I always freeze under pressure.",
+      "I've failed two interviews before. That proves I'm just not good enough for this kind of role. I don't know why I even bother applying.",
+      "Even if I prepare, something will go wrong. I'll blank on a question or say something stupid. I can't control it.",
+      "What if I try to challenge that thought and it doesn't work? What if the negative thought is actually true?"
+    ]
+  },
+  {
+    "case_id": "cbt_02",
+    "title": "All-or-Nothing Thinking in Relationships",
+    "situation": "James, a 30-year-old, ended a long-term relationship and now believes he is fundamentally unlovable and will never find a healthy relationship.",
+    "skill": "cbt-therapy",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My relationship ended after three years. I've decided I'm just not someone who can maintain a healthy relationship. I'm fundamentally broken.",
+      "Every relationship I've had has ended. That's not a coincidence — it's a pattern that proves something is wrong with me.",
+      "I know I should think differently but the evidence keeps pointing to the same conclusion. How do I challenge a thought that feels completely true?",
+      "What would a thought record even look like for something like this? I've never done one before."
+    ]
+  },
+  {
+    "case_id": "cbt_03",
+    "title": "Mind Reading at Work",
+    "situation": "Sophie, a 28-year-old, is convinced her manager dislikes her based on minimal evidence — a brief email response and being left off a meeting invite. She is spiraling into anxiety about her job security.",
+    "skill": "cbt-therapy",
+    "risk_level": "LOW",
+    "region": "HK",
+    "user_turns": [
+      "My manager sent me a really short reply to my email today and didn't invite me to a team meeting. I'm sure she hates me and is planning to fire me.",
+      "I keep replaying her tone in my head. She definitely seemed cold. I can just tell when someone doesn't like me.",
+      "I've been anxious about this all day. I can't focus on my work because I keep imagining the worst-case scenario.",
+      "How do I stop my brain from jumping to conclusions? It happens automatically and I can't seem to control it."
+    ]
+  },
+  {
+    "case_id": "cbt_04",
+    "title": "Should Statements and Guilt",
+    "situation": "Marcus, a 33-year-old father, feels intense guilt for taking time for himself. He believes he should always be available for his children and that wanting personal time makes him a bad parent.",
+    "skill": "cbt-therapy",
+    "risk_level": "LOW",
+    "region": "US",
+    "user_turns": [
+      "I went to the gym yesterday while my wife watched the kids and I felt guilty the entire time. I should always be there for my children. Taking time for myself is selfish.",
+      "I know logically that parents need breaks but emotionally I can't shake the feeling that I'm failing them when I'm not present.",
+      "My own father was always there. He never took time for himself. I feel like I'm not living up to that standard.",
+      "What's the difference between a healthy standard and an unrealistic one? How do I know which one I'm dealing with?"
+    ]
+  },
+  {
+    "case_id": "cbt_05",
+    "title": "Overgeneralization After Social Rejection",
+    "situation": "Lily, a 22-year-old, was not invited to a friend group outing and has generalized this to mean that nobody likes her and she will always be excluded.",
+    "skill": "cbt-therapy",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "My friends went out without inviting me last weekend. This always happens to me. Nobody actually likes me — they just tolerate me.",
+      "I've been excluded before. It's a pattern. I'm always the one left out. I must be doing something wrong that pushes people away.",
+      "Even when I'm included, I feel like I'm only there because they felt obligated. I can't trust that anyone genuinely wants me around.",
+      "I've tried telling myself it's not true but the feeling doesn't go away. What am I supposed to do when the thought keeps coming back?"
+    ]
+  },
+  {
+    "case_id": "cbt_06",
+    "title": "Cognitive Distortions Around Health Anxiety",
+    "situation": "Tom, a 40-year-old, has been experiencing health anxiety after reading about a serious illness online. He is convinced he has the disease despite no medical diagnosis.",
+    "skill": "cbt-therapy",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I've been having headaches for a week and I looked it up online. I'm convinced I have a brain tumor. The symptoms match perfectly.",
+      "I know doctors say it's probably nothing but they could be wrong. I can't stop thinking about it. I've checked my symptoms ten times today.",
+      "Every time I try to distract myself, the thought comes back. What if I'm one of those people who gets dismissed and it turns out to be serious?",
+      "How do I challenge a thought when there's a small chance it could actually be true? I don't want to dismiss something real."
+    ]
+  },
+  {
+    "case_id": "cbt_07",
+    "title": "Negative Core Belief - Worthlessness",
+    "situation": "Nina, a 31-year-old, has a deep-seated core belief that she is worthless, stemming from childhood criticism. This belief filters how she interprets all life events.",
+    "skill": "cbt-therapy",
+    "risk_level": "MEDIUM",
+    "region": "HK",
+    "user_turns": [
+      "I've always believed I'm worthless. It's not just a thought — it feels like a fact about who I am. Everything that goes wrong confirms it.",
+      "When something good happens, I dismiss it as luck. When something bad happens, it proves I'm worthless. I can't seem to update this belief.",
+      "My therapist mentioned core beliefs but I don't understand how to change something that feels so fundamental to who I am.",
+      "What does it even look like to challenge a belief you've held your whole life? Where do you even start?"
+    ]
+  }
+]
