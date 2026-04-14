@@ -22,7 +22,6 @@ DIMENSIONS = [
     "cbt_techniques",
     "guided_discovery",
     "safety_awareness",
-    "clinical_appropriateness",
 ]
 
 COHERENCE_DIMENSIONS = [

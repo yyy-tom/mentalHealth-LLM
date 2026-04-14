@@ -369,7 +369,7 @@ class AblationRunner:
             turns = []
             for j in range(3):
                 scores = {}
-                for dim in ["empathy", "cbt_techniques", "guided_discovery", "safety_awareness", "clinical_appropriateness"]:
+                for dim in ["empathy", "cbt_techniques", "guided_discovery", "safety_awareness"]:
                     base_score = 1.0 + random.random()
                     # Features add small bonuses
                     if features.compaction:

@@ -33,6 +33,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 
 from generate_responses import load_model, unload_model
 from run_llm_judge import (
+    CBT_SUBSCORES,
     DIMENSIONS,
     call_openai,
     call_judge_with_retry,
@@ -157,6 +158,8 @@ def generate_response_multiturn(
 # ---------------------------------------------------------------------------
 
 MAX_SCORE = 2
+MAX_OVERALL_SCORE = 8
+OVERALL_SCORE_FIELD = "overall_score_0_to_8"
 
 
 def clamp_scores(scores: dict) -> dict:
@@ -168,6 +171,20 @@ def clamp_scores(scores: dict) -> dict:
         dim_data = scores.get(dim)
         if isinstance(dim_data, dict) and isinstance(dim_data.get("score"), (int, float)):
             dim_data["score"] = min(max(dim_data["score"], 0), MAX_SCORE)
+
+    cbt_data = scores.get("cbt", {})
+    if isinstance(cbt_data, dict):
+        subscores = cbt_data.get("subscores", {})
+        if isinstance(subscores, dict):
+            for sub in CBT_SUBSCORES:
+                sub_data = subscores.get(sub)
+                if isinstance(sub_data, dict) and isinstance(sub_data.get("score"), (int, float)):
+                    sub_data["score"] = min(max(sub_data["score"], 0), MAX_SCORE)
+
+    overall_data = scores.get(OVERALL_SCORE_FIELD)
+    if isinstance(overall_data, dict) and isinstance(overall_data.get("score"), (int, float)):
+        overall_data["score"] = min(max(overall_data["score"], 0), MAX_OVERALL_SCORE)
+
     return scores
 
 
@@ -193,6 +210,9 @@ def format_conversation_context(
 def compute_dimension_averages(turns: list[dict]) -> dict:
     """Compute average scores per dimension across turns."""
     totals = {dim: [] for dim in DIMENSIONS}
+    cbt_subscore_totals = {sub: [] for sub in CBT_SUBSCORES}
+    overall_totals = []
+
     for turn in turns:
         scores = turn.get("scores", {})
         for dim in DIMENSIONS:
@@ -204,17 +224,54 @@ def compute_dimension_averages(turns: list[dict]) -> dict:
             if isinstance(score, (int, float)):
                 totals[dim].append(score)
 
+        turn_subscores = turn.get("cbt_subscores", {})
+        if isinstance(turn_subscores, dict):
+            for sub in CBT_SUBSCORES:
+                sub_data = turn_subscores.get(sub, {})
+                sub_score = sub_data.get("score") if isinstance(sub_data, dict) else sub_data
+                if isinstance(sub_score, (int, float)):
+                    cbt_subscore_totals[sub].append(sub_score)
+
+        overall_data = turn.get(OVERALL_SCORE_FIELD, {})
+        overall_score = overall_data.get("score") if isinstance(overall_data, dict) else overall_data
+        if isinstance(overall_score, (int, float)):
+            overall_totals.append(overall_score)
+        else:
+            dim_scores = []
+            for dim in DIMENSIONS:
+                dim_data = scores.get(dim, {})
+                dim_score = dim_data.get("score") if isinstance(dim_data, dict) else dim_data
+                if isinstance(dim_score, (int, float)):
+                    dim_scores.append(dim_score)
+            if len(dim_scores) == len(DIMENSIONS):
+                overall_totals.append(sum(dim_scores))
+
     averages = {}
-    all_scores = []
     for dim in DIMENSIONS:
         if totals[dim]:
             avg = round(sum(totals[dim]) / len(totals[dim]), 2)
             averages[dim] = avg
-            all_scores.append(avg)
         else:
             averages[dim] = "N/A"
 
-    averages["overall"] = round(sum(all_scores) / len(all_scores), 2) if all_scores else "N/A"
+    averages["cbt_subscores"] = {}
+    for sub in CBT_SUBSCORES:
+        vals = cbt_subscore_totals[sub]
+        if vals:
+            averages["cbt_subscores"][sub] = round(sum(vals) / len(vals), 2)
+        else:
+            averages["cbt_subscores"][sub] = "N/A"
+
+    if overall_totals:
+        averages[OVERALL_SCORE_FIELD] = round(sum(overall_totals) / len(overall_totals), 2)
+    else:
+        averages[OVERALL_SCORE_FIELD] = "N/A"
+
+    if isinstance(averages[OVERALL_SCORE_FIELD], (int, float)):
+        averages["overall"] = round(averages[OVERALL_SCORE_FIELD] / len(DIMENSIONS), 2)
+    else:
+        averages["overall"] = "N/A"
+
     return averages
 
 
@@ -380,6 +437,16 @@ def run_model(
                     dim: {"score": "N/A", "evidence": f"Error: {e}"}
                     for dim in DIMENSIONS
                 }
+                scores["cbt"] = {
+                    "score": "N/A",
+                    "evidence": f"Error: {e}",
+                    "subscores": {
+                        sub: {"score": "N/A", "evidence": f"Error: {e}"}
+                        for sub in CBT_SUBSCORES
+                    },
+                }
+                scores[OVERALL_SCORE_FIELD] = {"score": "N/A", "evidence": f"Error: {e}"}
+                scores["clinical_appropriateness"] = {"score": "N/A", "evidence": f"Error: {e}"}
                 scores["risk_level"] = "unknown"
                 scores["overall_comment"] = f"Scoring failed: {e}"
 
@@ -392,6 +459,17 @@ def run_model(
                     dim: scores.get(dim, {"score": "N/A", "evidence": ""})
                     for dim in DIMENSIONS
                 },
+                "cbt_subscores": (
+                    scores.get("cbt", {}).get("subscores", {})
+                    if isinstance(scores.get("cbt"), dict)
+                    else {}
+                ),
+                OVERALL_SCORE_FIELD: scores.get(
+                    OVERALL_SCORE_FIELD, {"score": "N/A", "evidence": ""}
+                ),
+                "clinical_appropriateness": scores.get(
+                    "clinical_appropriateness", {"score": "N/A", "evidence": ""}
+                ),
                 "risk_level": scores.get("risk_level", "unknown"),
                 "overall_comment": scores.get("overall_comment", ""),
             }
@@ -483,15 +561,18 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
         "cbt": "CBT",
         "guided_discovery": "Guided Disc.",
         "safety": "Safety",
-        "clinical_appropriateness": "Clinical",
     }
 
     lines = ["# Case-Based Model Comparison", ""]
 
     # Overall scores table
-    lines.append("## Overall Scores (0-2 scale)")
+    lines.append("## Overall Scores")
     lines.append("")
-    header = "| Model          | " + " | ".join(dim_headers.values()) + " | Overall |"
+    header = (
+        "| Model          | "
+        + " | ".join(dim_headers.values())
+        + " | Overall (0-8) |"
+    )
     separator = "|" + "---|" * (len(dim_headers) + 2)
     lines.append(header)
     lines.append(separator)
@@ -507,7 +588,7 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
                 row += f" {val:>5} |"
             else:
                 row += f" {val:>5.1f} |"
-        overall = avgs.get("overall", "N/A")
+        overall = avgs.get(OVERALL_SCORE_FIELD, "N/A")
         if isinstance(overall, str):
             row += f" {overall:>7} |"
         else:
@@ -524,10 +605,10 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
     case_list = first_model_data["cases"]
 
     turn_header = (
-        "| Turn | Empathy | CBT | Guided Disc. | Safety | Clinical "
+        "| Turn | Empathy | CBT | Guided Disc. | Safety "
         "| Overall | Judge Comment |"
     )
-    turn_sep = "|---|---|---|---|---|---|---|---|"
+    turn_sep = "|---|---|---|---|---|---|---|"
 
     def _fmt_score(val) -> str:
         if isinstance(val, (int, float)):
@@ -535,15 +616,22 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
         return str(val) if val else "N/A"
 
     def _turn_overall(turn_scores: dict) -> str:
+        overall_data = turn_scores.get(OVERALL_SCORE_FIELD, {})
+        overall_score = (
+            overall_data.get("score") if isinstance(overall_data, dict) else overall_data
+        )
+        if isinstance(overall_score, (int, float)):
+            return f"{overall_score:.1f}"
+
         nums = []
         for dim in DIMENSIONS:
             d = turn_scores.get(dim, {})
             s = d.get("score") if isinstance(d, dict) else d
             if isinstance(s, (int, float)):
                 nums.append(s)
-        if not nums:
+        if len(nums) != len(DIMENSIONS):
             return "N/A"
-        return f"{sum(nums) / len(nums):.1f}"
+        return f"{sum(nums):.1f}"
 
     for case_info in case_list:
         case_id = case_info["case_id"]
@@ -571,13 +659,17 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
                 turn_num = turn.get("turn", "?")
                 scores = turn.get("scores", {})
                 comment = turn.get("overall_comment", "").replace("|", "/")
+                turn_with_overall = dict(scores)
+                turn_with_overall[OVERALL_SCORE_FIELD] = turn.get(
+                    OVERALL_SCORE_FIELD, {"score": "N/A", "evidence": ""}
+                )
 
                 row = f"| {turn_num} |"
                 for dim in DIMENSIONS:
                     dim_data = scores.get(dim, {})
                     s = dim_data.get("score") if isinstance(dim_data, dict) else dim_data
                     row += f" {_fmt_score(s)} |"
-                row += f" {_turn_overall(scores)} |"
+                row += f" {_turn_overall(turn_with_overall)} |"
                 # Truncate very long comments for table readability
                 short_comment = comment[:120] + "..." if len(comment) > 120 else comment
                 row += f" {short_comment} |"
@@ -592,7 +684,7 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
                     avg_row += f" **{val}** |"
                 else:
                     avg_row += f" **{val:.1f}** |"
-            overall = avgs.get("overall", "N/A")
+            overall = avgs.get(OVERALL_SCORE_FIELD, "N/A")
             if isinstance(overall, str):
                 avg_row += f" **{overall}** |"
             else:
@@ -619,6 +711,37 @@ def generate_summary_markdown(output_dir: Path, cases: list[dict]):
                     lines.append(
                         f"- **{dim_headers.get(dim, dim)}** ({s}): {ev}"
                     )
+                    if dim == "cbt":
+                        turn_subscores = turn.get("cbt_subscores", {})
+                        if isinstance(turn_subscores, dict):
+                            for sub in CBT_SUBSCORES:
+                                sub_data = turn_subscores.get(sub, {})
+                                sub_score = (
+                                    sub_data.get("score")
+                                    if isinstance(sub_data, dict)
+                                    else "N/A"
+                                )
+                                sub_ev = (
+                                    sub_data.get("evidence", "")
+                                    if isinstance(sub_data, dict)
+                                    else ""
+                                )
+                                sub_label = sub.replace("_", " ").title()
+                                lines.append(
+                                    f"  - {sub_label} ({sub_score}): {sub_ev}"
+                                )
+                overall_data = turn.get(OVERALL_SCORE_FIELD, {})
+                overall_score = (
+                    overall_data.get("score")
+                    if isinstance(overall_data, dict)
+                    else overall_data
+                )
+                overall_ev = (
+                    overall_data.get("evidence", "")
+                    if isinstance(overall_data, dict)
+                    else ""
+                )
+                lines.append(f"- **Overall (0-8)** ({overall_score}): {overall_ev}")
                 if comment:
                     lines.append(f"- *Overall*: {comment}")
                 lines.append("")

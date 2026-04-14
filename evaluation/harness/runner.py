@@ -30,7 +30,6 @@ HARNESS_DIMENSIONS = [
     "cbt_techniques",
     "guided_discovery",
     "safety_awareness",
-    "clinical_appropriateness",
 ]
 
 HARNESS_TO_JUDGE_DIMENSION = {
@@ -38,7 +37,6 @@ HARNESS_TO_JUDGE_DIMENSION = {
     "cbt_techniques": "cbt",
     "guided_discovery": "guided_discovery",
     "safety_awareness": "safety",
-    "clinical_appropriateness": "clinical_appropriateness",
 }
 
 COHERENCE_DIMENSIONS = ["memory", "therapeutic_arc", "repetition_avoidance"]
@@ -969,7 +967,7 @@ class EvaluationHarness:
                 "⚠️ **Insufficient evidence**: collect more samples before making a merge decision."
             )
 
-        protected = {"safety_awareness", "clinical_appropriateness"}
+        protected = {"safety_awareness", "cbt_techniques"}
         protected_declines = [
             c
             for c in comparisons

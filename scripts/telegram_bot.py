@@ -661,11 +661,20 @@ async def _score_in_background(
 # ── Whisper ───────────────────────────────────────────────────────
 
 
-def load_whisper_model(model_size: str = "base") -> None:
-    """Load faster-whisper on CPU with int8 quantization."""
+def load_whisper_model(model_size: str = "large-v3") -> None:
+    """Load faster-whisper on the last available GPU (float16), falling back to CPU (int8)."""
     global whisper_model
-    print(f"Loading Whisper model: {model_size}")
-    whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    if gpu_count > 0:
+        # Use the last GPU to avoid competing with LLMs assigned round-robin from GPU 0
+        whisper_gpu = gpu_count - 1
+        device = f"cuda:{whisper_gpu}"
+        compute_type = "float16"
+    else:
+        device = "cpu"
+        compute_type = "int8"
+    print(f"Loading Whisper model: {model_size} on {device} ({compute_type})")
+    whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
     print("Whisper model loaded and ready.")
 
 
@@ -1318,7 +1327,6 @@ async def harness_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                             "cbt_techniques",
                             "guided_discovery",
                             "safety_awareness",
-                            "clinical_appropriateness",
                         ):
                             dim_stats = dims.get(dim)
                             if isinstance(dim_stats, dict) and "mean" in dim_stats:
@@ -1445,8 +1453,8 @@ def main() -> None:
     parser.add_argument(
         "--whisper_model",
         type=str,
-        default="base",
-        help="Whisper model size for voice transcription (default: base)",
+        default="large-v3",
+        help="Whisper model size for voice transcription (default: large-v3)",
     )
     parser.add_argument(
         "--whisper_language",

@@ -5,9 +5,9 @@ Aggregate LLM judge scores and generate markdown tables for the paper.
 Supports multi-judge scoring: parses new-format filenames ({model}_{judge}_run{N}.json)
 and old-format filenames ({model}_run{N}.json) for backward compatibility.
 
-Computes per-dimension averages, overall scores, Krippendorff's alpha (intra-judge
-and inter-judge), risk-level breakdowns, score distributions, and optional
-human-LLM correlation.
+Computes per-dimension averages, overall 0-8 scores, CBT technique subscore
+averages, Krippendorff's alpha (intra-judge and inter-judge), risk-level
+breakdowns, score distributions, and optional human-LLM correlation.
 
 Usage:
     python scripts/evaluation/aggregate_results.py \
@@ -29,13 +29,26 @@ from pathlib import Path
 
 import numpy as np
 
-DIMENSIONS = ["empathy", "cbt", "guided_discovery", "safety", "clinical_appropriateness"]
+DIMENSIONS = ["empathy", "cbt", "guided_discovery", "safety"]
+CBT_SUBSCORES = [
+    "cognitive_reconstruction",
+    "behavioral_activation",
+    "positive_encouragement",
+    "psychoeducation",
+]
+OVERALL_FIELD = "overall_score_0_to_8"
+CATEGORY_SUBSCORES = [f"cbt_{s}" for s in CBT_SUBSCORES]
 DIMENSION_LABELS = {
     "empathy": "Empathy",
     "cbt": "CBT",
     "guided_discovery": "Guided Disc.",
     "safety": "Safety",
-    "clinical_appropriateness": "Clinical",
+}
+CBT_SUBSCORE_LABELS = {
+    "cbt_cognitive_reconstruction": "CBT: Cognitive Recon.",
+    "cbt_behavioral_activation": "CBT: Behavioral Act.",
+    "cbt_positive_encouragement": "CBT: Positive Encour.",
+    "cbt_psychoeducation": "CBT: Psychoeducation",
 }
 
 MODEL_DISPLAY_NAMES = {
@@ -46,6 +59,21 @@ MODEL_DISPLAY_NAMES = {
 }
 
 KNOWN_JUDGES = {"gpt-4o", "deepseek", "gemini", "claude"}
+
+
+def normalize_score(value):
+    """Normalize a score value to float/int or 'N/A'."""
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip().upper()
+        if stripped == "N/A":
+            return "N/A"
+        try:
+            return float(stripped)
+        except ValueError:
+            return "N/A"
+    return "N/A"
 
 
 def round_to_half(value: float) -> float:
@@ -108,7 +136,30 @@ def collect_scores(scores_dir: Path) -> dict:
             for dim in DIMENSIONS:
                 dim_data = entry.get(dim, {})
                 score = dim_data.get("score", "N/A") if isinstance(dim_data, dict) else "N/A"
-                scores[dim] = score
+                scores[dim] = normalize_score(score)
+
+            overall_data = entry.get(OVERALL_FIELD, {})
+            overall_score = (
+                overall_data.get("score", "N/A")
+                if isinstance(overall_data, dict)
+                else "N/A"
+            )
+            scores[OVERALL_FIELD] = normalize_score(overall_score)
+
+            subscores = entry.get("cbt_subscores", {})
+            if not isinstance(subscores, dict):
+                # Backward-compatible fallback if nested under cbt.subscores
+                cbt_data = entry.get("cbt", {})
+                subscores = cbt_data.get("subscores", {}) if isinstance(cbt_data, dict) else {}
+            for sub in CBT_SUBSCORES:
+                key = f"cbt_{sub}"
+                sub_data = subscores.get(sub, {})
+                sub_score = (
+                    sub_data.get("score", "N/A")
+                    if isinstance(sub_data, dict)
+                    else "N/A"
+                )
+                scores[key] = normalize_score(sub_score)
             data[model_key][judge][run_id][sid] = scores
 
     return dict(data)
@@ -136,9 +187,10 @@ def flatten_judge_data(model_judges: dict) -> dict:
 def compute_dimension_averages(model_data: dict) -> dict:
     """Compute per-dimension averages across all runs and samples.
 
-    Returns {dim: rounded_average} with CBT N/A excluded.
+    Returns {dim: rounded_average} for the four rubric dimensions.
     """
     dim_values = defaultdict(list)
+    overall_values = []
 
     for run_id, samples in model_data.items():
         for sid, scores in samples.items():
@@ -146,6 +198,13 @@ def compute_dimension_averages(model_data: dict) -> dict:
                 val = scores.get(dim, "N/A")
                 if isinstance(val, (int, float)):
                     dim_values[dim].append(val)
+            overall_val = scores.get(OVERALL_FIELD, "N/A")
+            if isinstance(overall_val, (int, float)):
+                overall_values.append(overall_val)
+            else:
+                row_scores = [scores.get(dim, "N/A") for dim in DIMENSIONS]
+                if all(isinstance(v, (int, float)) for v in row_scores):
+                    overall_values.append(sum(row_scores))
 
     averages = {}
     for dim in DIMENSIONS:
@@ -155,15 +214,43 @@ def compute_dimension_averages(model_data: dict) -> dict:
         else:
             averages[dim] = "N/A"
 
+    if overall_values:
+        averages[OVERALL_FIELD] = round_to_half(np.mean(overall_values))
+    else:
+        averages[OVERALL_FIELD] = "N/A"
+
     return averages
 
 
 def compute_overall(averages: dict) -> float | str:
-    """Mean of applicable dimension scores."""
+    """Mean overall score on the rubric 0-8 scale."""
+    overall = averages.get(OVERALL_FIELD)
+    if isinstance(overall, (int, float)):
+        return round_to_half(float(overall))
     numeric = [v for v in averages.values() if isinstance(v, (int, float))]
     if numeric:
-        return round_to_half(np.mean(numeric))
+        # Backward-compatible fallback for older files without explicit overall field
+        return round_to_half(float(np.sum(numeric)))
     return "N/A"
+
+
+def compute_cbt_subscore_averages(model_data: dict) -> dict:
+    """Compute averages for the four CBT technique subscores."""
+    vals = defaultdict(list)
+    for _, samples in model_data.items():
+        for _, scores in samples.items():
+            for key in CATEGORY_SUBSCORES:
+                score = scores.get(key, "N/A")
+                if isinstance(score, (int, float)):
+                    vals[key].append(score)
+
+    out = {}
+    for key in CATEGORY_SUBSCORES:
+        if vals[key]:
+            out[key] = round_to_half(np.mean(vals[key]))
+        else:
+            out[key] = "N/A"
+    return out
 
 
 def compute_krippendorff_alpha(model_data: dict) -> dict:
@@ -307,17 +394,17 @@ def compute_safety_by_risk(model_data: dict) -> dict:
 
 
 def compute_score_distributions(model_data: dict) -> dict:
-    """Histogram of 1-5 scores per dimension."""
+    """Histogram of 0-2 scores per dimension."""
     distributions = {}
 
     for dim in DIMENSIONS:
-        counts = {i: 0 for i in range(1, 6)}
+        counts = {i: 0 for i in range(0, 3)}
         na_count = 0
         for run_id, samples in model_data.items():
             for sid, scores in samples.items():
                 val = scores.get(dim, "N/A")
-                if isinstance(val, (int, float)) and 1 <= val <= 5:
-                    counts[int(val)] += 1
+                if isinstance(val, (int, float)) and 0 <= val <= 2:
+                    counts[int(round(val))] += 1
                 else:
                     na_count += 1
         distributions[dim] = {"counts": counts, "na": na_count}
@@ -374,7 +461,11 @@ def _format_comparison_table(all_averages: dict, all_overalls: dict, title: str)
     """Generate a model comparison table section."""
     lines = []
     lines.append(f"## {title}\n")
-    header = "| Model | " + " | ".join(DIMENSION_LABELS[d] for d in DIMENSIONS) + " | Overall |"
+    header = (
+        "| Model | "
+        + " | ".join(DIMENSION_LABELS[d] for d in DIMENSIONS)
+        + " | Overall (0-8) |"
+    )
     sep = "|" + "|".join(["---"] * (len(DIMENSIONS) + 2)) + "|"
     lines.append(header)
     lines.append(sep)
@@ -388,6 +479,29 @@ def _format_comparison_table(all_averages: dict, all_overalls: dict, title: str)
             val = avgs[dim]
             cells.append(f"{val}" if isinstance(val, str) else f"{val:.1f}")
         cells.append(f"{overall}" if isinstance(overall, str) else f"{overall:.1f}")
+        lines.append("| " + " | ".join(cells) + " |")
+
+    lines.append("")
+    return lines
+
+
+def _format_cbt_subscore_table(all_subscores: dict, title: str) -> list[str]:
+    """Generate a CBT subscore comparison table section."""
+    lines = []
+    lines.append(f"## {title}\n")
+    ordered = list(CBT_SUBSCORE_LABELS.keys())
+    header = "| Model | " + " | ".join(CBT_SUBSCORE_LABELS[k] for k in ordered) + " |"
+    sep = "|" + "|".join(["---"] * (len(ordered) + 1)) + "|"
+    lines.append(header)
+    lines.append(sep)
+
+    for model_key in sorted(all_subscores.keys()):
+        vals = all_subscores[model_key]
+        name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
+        cells = [name]
+        for key in ordered:
+            v = vals.get(key, "N/A")
+            cells.append(f"{v}" if isinstance(v, str) else f"{v:.1f}")
         lines.append("| " + " | ".join(cells) + " |")
 
     lines.append("")
@@ -419,6 +533,7 @@ def _format_alpha_table(all_alphas: dict, title: str) -> list[str]:
 def generate_markdown(
     combined_averages: dict,
     combined_overalls: dict,
+    combined_cbt_subscores: dict,
     combined_alphas: dict,
     combined_safety_by_risk: dict,
     combined_distributions: dict,
@@ -443,6 +558,9 @@ def generate_markdown(
     lines.extend(_format_comparison_table(
         combined_averages, combined_overalls, "Model Comparison (All Judges Combined)",
     ))
+    lines.extend(_format_cbt_subscore_table(
+        combined_cbt_subscores, "CBT Technique Subscores (All Judges Combined)",
+    ))
 
     # 2. Per-Judge Model Comparison
     judges = sorted(per_judge_results.keys())
@@ -452,6 +570,9 @@ def generate_markdown(
             lines.extend(_format_comparison_table(
                 jr["averages"], jr["overall_scores"],
                 f"Model Comparison ({judge})",
+            ))
+            lines.extend(_format_cbt_subscore_table(
+                jr["cbt_subscores"], f"CBT Technique Subscores ({judge})",
             ))
 
     # 3. Intra-Judge Consistency
@@ -498,15 +619,15 @@ def generate_markdown(
     for model_key in sorted(combined_distributions.keys()):
         name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
         lines.append(f"### {name}\n")
-        lines.append("| Dimension | 1 | 2 | 3 | 4 | 5 | N/A |")
-        lines.append("|---|---|---|---|---|---|---|")
+        lines.append("| Dimension | 0 | 1 | 2 | N/A |")
+        lines.append("|---|---|---|---|---|")
 
         dists = combined_distributions[model_key]
         for dim in DIMENSIONS:
             dist = dists[dim]
             label = DIMENSION_LABELS[dim]
             counts = dist["counts"]
-            row = [label] + [str(counts[i]) for i in range(1, 6)] + [str(dist["na"])]
+            row = [label] + [str(counts[i]) for i in range(0, 3)] + [str(dist["na"])]
             lines.append("| " + " | ".join(row) + " |")
 
         lines.append("")
@@ -572,6 +693,7 @@ def main():
         print(f"\n--- Per-judge analysis: {judge} ---")
         judge_averages = {}
         judge_overalls = {}
+        judge_cbt_subscores = {}
         judge_alphas = {}
 
         for model_key, judges in sorted(scores_data.items()):
@@ -580,6 +702,7 @@ def main():
             model_data = judges[judge]  # {run_id: {sample_id: scores}}
             judge_averages[model_key] = compute_dimension_averages(model_data)
             judge_overalls[model_key] = compute_overall(judge_averages[model_key])
+            judge_cbt_subscores[model_key] = compute_cbt_subscore_averages(model_data)
             judge_alphas[model_key] = compute_krippendorff_alpha(model_data)
 
             print(f"  {model_key}: avg={judge_averages[model_key]}, overall={judge_overalls[model_key]}")
@@ -587,6 +710,7 @@ def main():
         per_judge_results[judge] = {
             "averages": judge_averages,
             "overall_scores": judge_overalls,
+            "cbt_subscores": judge_cbt_subscores,
             "krippendorff_alpha": judge_alphas,
         }
 
@@ -594,6 +718,7 @@ def main():
     print("\n--- Combined analysis (all judges) ---")
     combined_averages = {}
     combined_overalls = {}
+    combined_cbt_subscores = {}
     combined_alphas = {}
     combined_safety_by_risk = {}
     combined_distributions = {}
@@ -602,6 +727,7 @@ def main():
         flat = flatten_judge_data(judges)
         combined_averages[model_key] = compute_dimension_averages(flat)
         combined_overalls[model_key] = compute_overall(combined_averages[model_key])
+        combined_cbt_subscores[model_key] = compute_cbt_subscore_averages(flat)
         combined_alphas[model_key] = compute_krippendorff_alpha(flat)
         combined_safety_by_risk[model_key] = compute_safety_by_risk(flat)
         combined_distributions[model_key] = compute_score_distributions(flat)
@@ -627,7 +753,7 @@ def main():
 
     # Generate markdown
     markdown = generate_markdown(
-        combined_averages, combined_overalls, combined_alphas,
+        combined_averages, combined_overalls, combined_cbt_subscores, combined_alphas,
         combined_safety_by_risk, combined_distributions,
         per_judge_results, inter_judge_alphas, correlations,
     )
@@ -642,6 +768,7 @@ def main():
         "combined": {
             "averages": combined_averages,
             "overall_scores": combined_overalls,
+            "cbt_subscores": combined_cbt_subscores,
             "krippendorff_alpha": combined_alphas,
             "safety_by_risk": combined_safety_by_risk,
             "score_distributions": combined_distributions,

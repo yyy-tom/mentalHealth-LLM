@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from .run_llm_judge import (
+    CBT_SUBSCORES,
     DIMENSIONS,
     call_judge_with_retry,
     call_openai,
@@ -29,8 +30,8 @@ DIMENSION_LABELS = {
     "cbt": "CBT Technique",
     "guided_discovery": "Guided Discovery",
     "safety": "Safety",
-    "clinical_appropriateness": "Clinical Appropriateness",
 }
+OVERALL_SCORE_FIELD = "overall_score_0_to_8"
 
 _JUDGE_CONFIGS = {
     "deepseek": {
@@ -167,6 +168,8 @@ def aggregate_scores(score_list: list[dict]) -> dict:
     results (as returned by ``score_exchange_async``).
     """
     dim_values: dict[str, list[float]] = {d: [] for d in DIMENSIONS}
+    cbt_subscore_values: dict[str, list[float]] = {s: [] for s in CBT_SUBSCORES}
+    overall_values: list[float] = []
 
     for exchange in score_list:
         for _judge_name, result in exchange.items():
@@ -178,6 +181,29 @@ def aggregate_scores(score_list: list[dict]) -> dict:
                 if isinstance(score, int):
                     dim_values[dim].append(float(score))
 
+            cbt_data = result.get("cbt", {})
+            subscores = cbt_data.get("subscores", {}) if isinstance(cbt_data, dict) else {}
+            if isinstance(subscores, dict):
+                for sub in CBT_SUBSCORES:
+                    sub_entry = subscores.get(sub, {})
+                    sub_score = parse_score(sub_entry.get("score")) if isinstance(sub_entry, dict) else "N/A"
+                    if isinstance(sub_score, int):
+                        cbt_subscore_values[sub].append(float(sub_score))
+
+            overall_entry = result.get(OVERALL_SCORE_FIELD, {})
+            overall_score = parse_score(overall_entry.get("score")) if isinstance(overall_entry, dict) else "N/A"
+            if isinstance(overall_score, int):
+                overall_values.append(float(overall_score))
+            else:
+                per_result_scores = []
+                for dim in DIMENSIONS:
+                    dim_entry = result.get(dim, {})
+                    dim_score = parse_score(dim_entry.get("score")) if isinstance(dim_entry, dict) else "N/A"
+                    if isinstance(dim_score, int):
+                        per_result_scores.append(float(dim_score))
+                if len(per_result_scores) == len(DIMENSIONS):
+                    overall_values.append(sum(per_result_scores))
+
     agg: dict[str, float | int | list[str]] = {}
     all_scores: list[float] = []
     for dim in DIMENSIONS:
@@ -186,6 +212,16 @@ def aggregate_scores(score_list: list[dict]) -> dict:
         agg[dim] = round(avg, 1)
         all_scores.extend(vals)
 
+    agg["cbt_subscores"] = {}
+    for sub in CBT_SUBSCORES:
+        vals = cbt_subscore_values[sub]
+        agg["cbt_subscores"][sub] = round(sum(vals) / len(vals), 1) if vals else 0.0
+
+    agg[OVERALL_SCORE_FIELD] = (
+        round(sum(overall_values) / len(overall_values), 1)
+        if overall_values
+        else 0.0
+    )
     agg["overall"] = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0.0
     agg["count"] = len(score_list)
     agg["judge_names"] = list(_judge_clients.keys())
@@ -212,8 +248,16 @@ def format_score_report(
         label = DIMENSION_LABELS.get(dim, dim)
         val = agg.get(dim, 0.0)
         lines.append(f"{label:<26} {val:>4.1f} / 2")
+
+    lines.append("")
+    lines.append("CBT Subscores")
+    for sub in CBT_SUBSCORES:
+        val = agg.get("cbt_subscores", {}).get(sub, 0.0)
+        label = sub.replace("_", " ").title()
+        lines.append(f"{label:<26} {val:>4.1f} / 2")
+
     lines.append("-" * 38)
-    lines.append(f"{'Overall':<26} {agg['overall']:>4.1f} / 2\n")
+    lines.append(f"{'Overall':<26} {agg[OVERALL_SCORE_FIELD]:>4.1f} / 8\n")
 
     judge_str = ", ".join(n.capitalize() for n in agg.get("judge_names", []))
     lines.append(f"Judges: {judge_str}")
