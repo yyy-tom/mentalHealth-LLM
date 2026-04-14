@@ -64,7 +64,7 @@ def load_model(model_path: str, use_4bit: bool = True):
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -72,7 +72,7 @@ def load_model(model_path: str, use_4bit: bool = True):
         quantization_config=bnb_config,
         device_map="auto",
         trust_remote_code=True,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
     )
 
     if is_lora:
