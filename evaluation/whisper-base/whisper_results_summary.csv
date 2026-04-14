@@ -1,0 +1,7 @@
+,wer,cer
+Type1_Clear_Neutral,0.01,0.006
+Type2_Fast_Speech,0.3914,0.193
+Type3_Background_Noise,0.0922,0.0444
+Type4_Emotional_Speech,0.2073,0.0971
+Type5_Long_Speech,0.0954,0.0391
+OVERALL,0.1593,0.0759
