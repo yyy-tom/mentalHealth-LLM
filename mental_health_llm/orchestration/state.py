@@ -77,6 +77,7 @@ class RetrievalResult(NodeResult):
     retrieved_chunks: list[dict] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)
     query_used: str = ""
+    skipped: bool = False
     
     def __post_init__(self):
         self.node_name = "retrieve"
@@ -103,6 +104,7 @@ class RetrievalResult(NodeResult):
             "num_chunks": len(self.retrieved_chunks),
             "citations": self.citations,
             "query_used": self.query_used,
+            "skipped": self.skipped,
         })
         return base
 

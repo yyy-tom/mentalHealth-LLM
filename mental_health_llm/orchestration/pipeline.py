@@ -274,16 +274,85 @@ class CounselingPipeline:
     def _default_retrieval(
         self, state: TurnState, triage: TriageResult
     ) -> RetrievalResult:
-        """Default retrieval (placeholder - Phase B implementation)."""
-        # TODO: Implement actual retrieval in Phase B
-        return RetrievalResult(
-            node_name="retrieve",
-            success=True,
-            duration_ms=0.0,
-            retrieved_chunks=[],
-            citations=[],
-            query_used=state.user_message,
-        )
+        """Default retrieval using psychoeducation knowledge base."""
+        if not self.config.enable_retrieval:
+            return RetrievalResult(
+                node_name="retrieve",
+                success=True,
+                duration_ms=0.0,
+                retrieved_chunks=[],
+                citations=[],
+                query_used=state.user_message,
+                skipped=True,
+            )
+        
+        try:
+            from mental_health_llm.retrieval import KnowledgeIndex, RetrievalEngine
+            from pathlib import Path
+            
+            # Use project-level KB path
+            kb_db = Path("data/kb/index.db")
+            if not kb_db.exists():
+                # Index not built yet
+                return RetrievalResult(
+                    node_name="retrieve",
+                    success=True,
+                    duration_ms=0.0,
+                    retrieved_chunks=[],
+                    citations=[],
+                    query_used=state.user_message,
+                    skipped=True,
+                    error="Knowledge base not indexed",
+                )
+            
+            index = KnowledgeIndex(db_path=kb_db)
+            engine = RetrievalEngine(
+                index=index,
+                default_top_k=self.config.max_retrieved_chunks,
+                relevance_threshold=0.3,
+            )
+            
+            # Skill-aware search
+            skill = triage.detected_skill if triage else "general-support"
+            result = engine.search_for_skill(
+                query=state.user_message,
+                skill=skill,
+                top_k=self.config.max_retrieved_chunks,
+            )
+            
+            # Convert to serializable format
+            chunks = []
+            citations = []
+            for r in result.results:
+                chunks.append({
+                    "source": r.document.source,
+                    "title": r.document.title,
+                    "content": r.document.content[:500],
+                    "score": r.score,
+                })
+                citations.append(r.document.source)
+            
+            return RetrievalResult(
+                node_name="retrieve",
+                success=True,
+                duration_ms=result.search_time_ms,
+                retrieved_chunks=chunks,
+                citations=citations,
+                query_used=state.user_message,
+            )
+            
+        except ImportError:
+            # sentence-transformers not installed
+            return RetrievalResult(
+                node_name="retrieve",
+                success=True,
+                duration_ms=0.0,
+                retrieved_chunks=[],
+                citations=[],
+                query_used=state.user_message,
+                skipped=True,
+                error="Retrieval module not available",
+            )
     
     def _default_generation(
         self,

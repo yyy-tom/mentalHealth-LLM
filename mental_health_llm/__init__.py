@@ -39,6 +39,19 @@ from mental_health_llm.orchestration import (
     run_pipeline,
 )
 
+# Retrieval module (requires sentence-transformers)
+try:
+    from mental_health_llm.retrieval import (
+        KnowledgeIndex,
+        Document,
+        RetrievalEngine,
+        SearchResult,
+        CitationFormatter,
+    )
+    _RETRIEVAL_AVAILABLE = True
+except ImportError:
+    _RETRIEVAL_AVAILABLE = False
+
 __all__ = [
     "SkillRouter",
     "KeywordRouter",
@@ -83,4 +96,10 @@ __all__ = [
     "TurnState",
     "PipelineTrace",
     "run_pipeline",
+    # Retrieval (conditional)
+    "KnowledgeIndex",
+    "Document",
+    "RetrievalEngine",
+    "SearchResult",
+    "CitationFormatter",
 ]

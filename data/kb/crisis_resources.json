@@ -1,0 +1,145 @@
+[
+  {
+    "region": "HK",
+    "name": "Hong Kong",
+    "resources": [
+      {
+        "name": "Samaritans Hong Kong",
+        "phone": "2389 2222",
+        "hours": "24/7",
+        "languages": ["English", "Cantonese"]
+      },
+      {
+        "name": "Suicide Prevention Services",
+        "phone": "2382 0000",
+        "hours": "24/7",
+        "languages": ["Cantonese", "English"]
+      },
+      {
+        "name": "The Samaritan Befrienders Hong Kong",
+        "phone": "2389 2222",
+        "hours": "24/7",
+        "languages": ["Cantonese", "English", "Mandarin"]
+      }
+    ]
+  },
+  {
+    "region": "US",
+    "name": "United States",
+    "resources": [
+      {
+        "name": "988 Suicide & Crisis Lifeline",
+        "phone": "988",
+        "hours": "24/7",
+        "languages": ["English", "Spanish"],
+        "note": "Call or text 988"
+      },
+      {
+        "name": "Crisis Text Line",
+        "phone": "Text HOME to 741741",
+        "hours": "24/7",
+        "languages": ["English"]
+      },
+      {
+        "name": "SAMHSA National Helpline",
+        "phone": "1-800-662-4357",
+        "hours": "24/7",
+        "languages": ["English", "Spanish"],
+        "note": "Mental health and substance abuse referrals"
+      }
+    ]
+  },
+  {
+    "region": "UK",
+    "name": "United Kingdom",
+    "resources": [
+      {
+        "name": "Samaritans",
+        "phone": "116 123",
+        "hours": "24/7",
+        "languages": ["English"],
+        "note": "Free to call"
+      },
+      {
+        "name": "SHOUT Crisis Text Line",
+        "phone": "Text SHOUT to 85258",
+        "hours": "24/7",
+        "languages": ["English"]
+      },
+      {
+        "name": "CALM (Campaign Against Living Miserably)",
+        "phone": "0800 58 58 58",
+        "hours": "5pm-midnight daily",
+        "languages": ["English"],
+        "note": "For men"
+      }
+    ]
+  },
+  {
+    "region": "AU",
+    "name": "Australia",
+    "resources": [
+      {
+        "name": "Lifeline Australia",
+        "phone": "13 11 14",
+        "hours": "24/7",
+        "languages": ["English"]
+      },
+      {
+        "name": "Beyond Blue",
+        "phone": "1300 22 4636",
+        "hours": "24/7",
+        "languages": ["English"]
+      },
+      {
+        "name": "Kids Helpline",
+        "phone": "1800 55 1800",
+        "hours": "24/7",
+        "languages": ["English"],
+        "note": "For ages 5-25"
+      }
+    ]
+  },
+  {
+    "region": "CA",
+    "name": "Canada",
+    "resources": [
+      {
+        "name": "988 Suicide Crisis Helpline",
+        "phone": "988",
+        "hours": "24/7",
+        "languages": ["English", "French"],
+        "note": "Call or text 988"
+      },
+      {
+        "name": "Crisis Services Canada",
+        "phone": "1-833-456-4566",
+        "hours": "24/7",
+        "languages": ["English", "French"]
+      },
+      {
+        "name": "Kids Help Phone",
+        "phone": "1-800-668-6868",
+        "hours": "24/7",
+        "languages": ["English", "French"],
+        "note": "For youth"
+      }
+    ]
+  },
+  {
+    "region": "INTL",
+    "name": "International",
+    "resources": [
+      {
+        "name": "International Association for Suicide Prevention",
+        "website": "https://www.iasp.info/resources/Crisis_Centres/",
+        "note": "Directory of crisis centers worldwide"
+      },
+      {
+        "name": "Befrienders Worldwide",
+        "website": "https://www.befrienders.org/",
+        "note": "Find a helpline in your country"
+      }
+    ]
+  }
+]
