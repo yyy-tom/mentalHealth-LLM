@@ -883,7 +883,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             def _persist_fn(state, generation, guard, triage):
                 """Persist turn using existing save logic."""
-                skill = generation.detected_skill if generation else ""
+                skill = generation.adapter_used if generation else ""
                 is_crisis = triage.crisis_level in (CrisisLevel.HIGH, CrisisLevel.CRITICAL) if triage else False
                 _save_turn(user_id, state.user_message, state.final_response, skill=skill, is_crisis=is_crisis)
                 return PersistResult(
@@ -916,7 +916,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             last_pipeline_traces[user_id] = state.to_trace()
 
             response = state.final_response
-            skill_name = state.generation.detected_skill if state.generation else ""
+            skill_name = state.generation.adapter_used if state.generation else ""
 
             # Log crisis escalation
             if state.is_crisis and outcome_logger:
