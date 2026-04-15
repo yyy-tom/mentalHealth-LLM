@@ -32,6 +32,7 @@ import json
 import logging
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,26 +88,182 @@ def run_cases_with_loaded_model(
     judge_call_fn,
     clamp_scores,
     use_system_role: bool,
+    judge_workers: int = 4,
 ) -> list[dict]:
-    """Run all cases with a pre-loaded model — no load/unload inside."""
-    results = []
-    for i, case in enumerate(cases):
-        log.info("  Case %d/%d: %s", i + 1, len(cases), case.get("case_id", "?"))
-        result = harness._evaluate_single_case(
-            model=model,
-            tokenizer=tokenizer,
-            case=case,
-            features=features,
-            generate_response_multiturn=generate_response_multiturn,
-            base_system_prompt=base_system_prompt,
-            judge_system_prompt=judge_system_prompt,
-            judge_user_template=judge_user_template,
-            call_judge_with_retry=call_judge_with_retry,
-            judge_call_fn=judge_call_fn,
-            clamp_scores=clamp_scores,
-            use_system_role=use_system_role,
-        )
-        results.append(result)
+    """Generate responses on GPU, then judge all turns in parallel via thread pool.
+
+    Within each case, turns are generated sequentially (each depends on prior
+    history). But all judge API calls are deferred and executed concurrently,
+    since they are network-bound and don't touch the GPU.
+    """
+    from evaluation.harness.runner import HARNESS_DIMENSIONS
+
+    # ------------------------------------------------------------------
+    # Phase 1: Generate all responses (GPU-bound, sequential)
+    # ------------------------------------------------------------------
+    generated_cases: list[dict] = []
+
+    for ci, case in enumerate(cases):
+        log.info("  [gen] Case %d/%d: %s", ci + 1, len(cases), case.get("case_id", "?"))
+        case_skill = case.get("skill", "general-support")
+        case_risk_level = str(case.get("risk_level", "UNKNOWN"))
+        crisis_level = case_risk_level.lower()
+        situation = case.get("situation", "")
+        user_turns = case.get("user_turns", [])
+        session_summary = ""
+
+        compactor = None
+        if features.multi_layer_compaction:
+            from mental_health_llm import MultiLayerCompactor
+            compactor = MultiLayerCompactor()
+
+        guard = None
+        if features.response_guard:
+            from mental_health_llm import ResponseGuard
+            guard = ResponseGuard()
+
+        prompt_builder = None
+        if features.dynamic_prompts:
+            from mental_health_llm import TherapyPromptBuilder
+            prompt_builder = TherapyPromptBuilder()
+
+        history: list[tuple[str, str]] = []
+        turn_data: list[dict] = []
+
+        for i, user_msg in enumerate(user_turns):
+            history_for_generation = history
+            if compactor and len(history) > 4:
+                compacted = compactor.compact(
+                    history=history, target_tokens=2000, preserve_recent=4,
+                )
+                history_for_generation = harness._messages_to_history_pairs(compacted.compacted)
+                session_summary = compacted.session_summary
+
+            system_prompt = base_system_prompt
+            if prompt_builder:
+                dynamic_prompt = (
+                    prompt_builder.with_skill(case_skill)
+                    .with_crisis_context(crisis_level)
+                    .with_user_profile(region=str(case.get("region", "US")))
+                    .with_session_summary(session_summary)
+                    .build()
+                )
+                if dynamic_prompt:
+                    system_prompt = dynamic_prompt
+
+            response = generate_response_multiturn(
+                model=model, tokenizer=tokenizer, user_message=user_msg,
+                system_prompt=system_prompt, history=history_for_generation,
+                use_system_role=use_system_role,
+                seed=harness.config.seed + i, max_new_tokens=harness.config.max_new_tokens,
+            )
+
+            if guard:
+                guard_result = guard.validate(response=response, skill=case_skill, crisis_level=crisis_level)
+                response = guard_result.response
+
+            context_str = harness._format_context(history, situation)
+            judge_user_msg = judge_user_template.format(
+                CONVERSATION_HISTORY=context_str,
+                USER_INPUT=user_msg,
+                MODEL_RESPONSE=response,
+            )
+
+            turn_data.append({
+                "turn_index": i + 1,
+                "user_message": user_msg,
+                "counselor_response": response,
+                "judge_user_msg": judge_user_msg,
+            })
+            history.append((user_msg, response))
+
+        generated_cases.append({
+            "case": case,
+            "turn_data": turn_data,
+            "case_skill": case_skill,
+            "case_risk_level": case_risk_level,
+            "situation": situation,
+        })
+
+    # ------------------------------------------------------------------
+    # Phase 2: Judge all turns in parallel (network-bound)
+    # ------------------------------------------------------------------
+    log.info("  [judge] Scoring %d cases with %d workers...",
+             len(generated_cases), judge_workers)
+
+    def _judge_turn(judge_user_msg: str) -> dict:
+        try:
+            scores = call_judge_with_retry(judge_call_fn, judge_system_prompt, judge_user_msg)
+            return {"ok": True, "scores": clamp_scores(scores)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def _judge_coherence(situation: str, turns: list[dict]) -> dict:
+        try:
+            return {"ok": True, "scores": harness._score_coherence(
+                judge_call_fn=judge_call_fn,
+                judge_system_prompt=judge_system_prompt,
+                situation=situation,
+                turns=turns,
+            )}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    results: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=judge_workers) as pool:
+        for gc_entry in generated_cases:
+            case = gc_entry["case"]
+            turn_data = gc_entry["turn_data"]
+
+            turn_futures = []
+            for td in turn_data:
+                fut = pool.submit(_judge_turn, td["judge_user_msg"])
+                turn_futures.append((td, fut))
+
+            turns_for_result: list[dict] = []
+            for td, fut in turn_futures:
+                judge_result = fut.result()
+                if judge_result["ok"]:
+                    js = judge_result["scores"]
+                    normalized = harness._normalize_dimension_scores(js)
+                    risk = js.get("risk_level", "unknown")
+                    comment = js.get("overall_comment", "")
+                else:
+                    normalized = {
+                        dim: {"score": "N/A", "evidence": f"Error: {judge_result['error']}"}
+                        for dim in HARNESS_DIMENSIONS
+                    }
+                    risk = "unknown"
+                    comment = f"Scoring failed: {judge_result['error']}"
+
+                turns_for_result.append({
+                    "turn_index": td["turn_index"],
+                    "user_message": td["user_message"],
+                    "counselor_response": td["counselor_response"],
+                    "scores": normalized,
+                    "risk_level": risk,
+                    "overall_comment": comment,
+                })
+
+            coherence_scores = {}
+            if len(turns_for_result) >= 2:
+                coh_fut = pool.submit(
+                    _judge_coherence, gc_entry["situation"], turns_for_result,
+                )
+                coh_result = coh_fut.result()
+                if coh_result["ok"]:
+                    coherence_scores = coh_result["scores"]
+
+            results.append({
+                "case_id": case.get("case_id", "unknown"),
+                "title": case.get("title", ""),
+                "risk_level": gc_entry["case_risk_level"],
+                "skill": gc_entry["case_skill"],
+                "turns": turns_for_result,
+                "coherence_scores": coherence_scores,
+            })
+
     return results
 
 
@@ -116,6 +273,9 @@ def run_model(
     output_dir: Path,
     baseline_only: bool,
     test_suite: str,
+    judge_workers: int = 4,
+    case_start: int = 0,
+    case_end: int | None = None,
 ) -> None:
     log.info("=" * 70)
     log.info("Model: %s", model_id)
@@ -148,7 +308,11 @@ def run_model(
     )
 
     cases = harness._load_test_cases(test_suite)
-    log.info("Loaded %d test cases (suite=%s)", len(cases), test_suite)
+    total_cases = len(cases)
+    cases = cases[case_start:case_end]
+    log.info("Loaded %d/%d test cases (suite=%s, slice=[%d:%s])",
+             len(cases), total_cases, test_suite, case_start,
+             str(case_end) if case_end is not None else "end")
 
     # ------------------------------------------------------------------ #
     # Load model ONCE                                                       #
@@ -182,6 +346,7 @@ def run_model(
         judge_call_fn=judge_call_fn,
         clamp_scores=clamp_scores,
         use_system_role=use_system_role,
+        judge_workers=judge_workers,
     )
 
     # ------------------------------------------------------------------ #
@@ -334,7 +499,28 @@ def main():
         "--baseline-only", action="store_true",
         help="Only capture baseline, skip ablation passes",
     )
+    parser.add_argument(
+        "--judge-workers", type=int, default=4,
+        help="Number of concurrent judge API threads (default: 4)",
+    )
+    parser.add_argument(
+        "--gpu-id", type=int, default=None,
+        help="Pin to a specific GPU (sets CUDA_VISIBLE_DEVICES). If not set, uses default.",
+    )
+    parser.add_argument(
+        "--case-start", type=int, default=0,
+        help="Start index for case slice (0-based, inclusive). Used for multi-GPU splits.",
+    )
+    parser.add_argument(
+        "--case-end", type=int, default=None,
+        help="End index for case slice (exclusive). If not set, runs all cases from --case-start.",
+    )
     args = parser.parse_args()
+
+    if args.gpu_id is not None:
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
+        log.info("Pinned to GPU %d", args.gpu_id)
 
     config_path = Path(args.config)
     config = HarnessConfig.from_yaml(config_path) if config_path.exists() else HarnessConfig()
@@ -348,6 +534,9 @@ def main():
             output_dir=output_dir,
             baseline_only=args.baseline_only,
             test_suite=args.test_suite,
+            judge_workers=args.judge_workers,
+            case_start=args.case_start,
+            case_end=args.case_end,
         )
 
     log.info("All models complete. Results in %s", output_dir)
