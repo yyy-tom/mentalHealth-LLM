@@ -29,7 +29,12 @@ log = logging.getLogger(__name__)
 
 
 def find_raw_files(input_dir: Path, variant: str) -> list[Path]:
-    return sorted(input_dir.glob(f"{variant}_*.raw.json"))
+    files = sorted(input_dir.glob(f"{variant}_*.raw.json"))
+    if not files:
+        for subdir in input_dir.iterdir():
+            if subdir.is_dir():
+                files.extend(sorted(subdir.glob(f"{variant}_*.raw.json")))
+    return files
 
 
 def merge_variant(input_dirs: list[Path], variant: str) -> list[dict]:
